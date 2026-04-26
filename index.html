@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>우리 반 책장</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Jua&family=Nanum+Pen+Script&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- ============== 로그인 화면 ============== -->
+  <section id="login-screen" class="screen">
+    <div class="login-card">
+      <div class="login-logo">📚</div>
+      <h1 class="login-title">우리 반 책장</h1>
+      <p class="login-sub">읽고, 나누고, 함께 자라요</p>
+
+      <form id="login-form" class="login-form">
+        <div class="row">
+          <label>
+            <span>학년</span>
+            <input type="number" name="grade" min="1" max="6" required placeholder="3" />
+          </label>
+          <label>
+            <span>반</span>
+            <input type="number" name="classNo" min="1" max="20" required placeholder="2" />
+          </label>
+          <label>
+            <span>번호</span>
+            <input type="number" name="number" min="1" max="40" required placeholder="14" />
+          </label>
+        </div>
+        <label class="full">
+          <span>이름</span>
+          <input type="text" name="name" required maxlength="10" placeholder="홍길동" />
+        </label>
+        <label class="full">
+          <span>비밀번호 (4글자)</span>
+          <input
+            type="password"
+            name="password"
+            required
+            minlength="4"
+            maxlength="4"
+            placeholder="****"
+          />
+        </label>
+        <button type="submit" class="btn-primary">로그인</button>
+        <p class="login-hint">처음 로그인하면 입력한 비밀번호로 등록돼요!</p>
+      </form>
+
+      <button id="teacher-login-btn" class="link-btn">👩‍🏫 교사 로그인</button>
+    </div>
+  </section>
+
+  <!-- ============== 메인 앱 ============== -->
+  <section id="app-screen" class="screen hidden">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-emoji">📚</span>
+        <span class="brand-name">우리 반 책장</span>
+      </div>
+
+      <button id="influencer-banner" class="influencer-banner" title="우리 반 책플루언서 보기">
+        <span class="crown">👑</span>
+        <span class="banner-label">우리 반 책플루언서</span>
+        <span class="banner-leader" id="banner-leader">아직 없음</span>
+      </button>
+
+      <div class="user-area">
+        <span id="who-am-i" class="who"></span>
+        <button id="logout-btn" class="link-btn">로그아웃</button>
+      </div>
+    </header>
+
+    <main class="main-area">
+      <!-- 우리 반 온 책 읽기 -->
+      <section class="ono-section">
+        <div class="section-head">
+          <h2>📖 우리 반 온 책 읽기</h2>
+          <button id="add-teacher-post-btn" class="btn-ghost hidden">+ 책 등록</button>
+        </div>
+        <div class="ono-scroll" id="teacher-posts">
+          <div class="empty-ono">선생님이 함께 읽을 책을 곧 올려주실 거예요!</div>
+        </div>
+      </section>
+
+      <!-- 학생 게시글 -->
+      <section class="board-section">
+        <div class="section-head">
+          <h2>🌳 우리들의 책 이야기</h2>
+        </div>
+        <div class="board-grid" id="student-posts"></div>
+        <div id="empty-board" class="empty-board">
+          아직 올라온 글이 없어요. 첫 번째 글의 주인공이 되어볼까요? ✨
+        </div>
+      </section>
+    </main>
+
+    <button id="new-post-fab" class="fab" title="새 글 쓰기">
+      <span class="fab-plus">+</span>
+      <span class="fab-text">새 책 올리기</span>
+    </button>
+  </section>
+
+  <!-- ============== 새 글 작성 모달 ============== -->
+  <div id="new-post-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="new-post-title">📕 새 책 올리기</h3>
+        <button class="modal-close" data-close="new-post-modal">✕</button>
+      </div>
+      <form id="new-post-form" class="post-form">
+        <label class="full">
+          <span>책 표지 이미지 <em>(필수, 1장 이상)</em></span>
+          <input type="file" id="cover-input" accept="image/*" multiple required />
+          <div class="cover-preview" id="cover-preview"></div>
+        </label>
+        <label class="full">
+          <span>책 제목 <em>(필수)</em></span>
+          <input type="text" name="title" required maxlength="60" placeholder="예) 어린 왕자" />
+        </label>
+        <label class="full">
+          <span>지은이 <em>(필수)</em></span>
+          <input
+            type="text"
+            name="author"
+            required
+            maxlength="40"
+            placeholder="예) 생텍쥐페리"
+          />
+        </label>
+        <label class="full">
+          <span>책을 읽고 난 소감 <em>(필수)</em></span>
+          <textarea
+            name="review"
+            required
+            rows="5"
+            maxlength="800"
+            placeholder="이 책을 읽고 어떤 생각이 들었나요?"
+          ></textarea>
+        </label>
+        <label class="full">
+          <span>책에 대한 질문 <em>(필수, 1개)</em></span>
+          <textarea
+            name="question"
+            required
+            rows="2"
+            maxlength="200"
+            placeholder="친구들과 함께 이야기 나누고 싶은 질문을 적어보세요!"
+          ></textarea>
+        </label>
+        <div class="form-actions">
+          <button type="button" class="btn-ghost" data-close="new-post-modal">취소</button>
+          <button type="submit" class="btn-primary">📮 올리기</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============== 게시글 상세 모달 ============== -->
+  <div id="detail-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card detail-card">
+      <button class="modal-close detail-close" data-close="detail-modal">✕</button>
+      <div id="detail-body"></div>
+    </div>
+  </div>
+
+  <!-- ============== 책플루언서 랭킹 모달 ============== -->
+  <div id="ranking-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card ranking-card">
+      <div class="modal-head">
+        <h3>👑 우리 반 책플루언서</h3>
+        <button class="modal-close" data-close="ranking-modal">✕</button>
+      </div>
+      <p class="ranking-rule">
+        🏆 <b>점수 = 게시글 수 + (댓글 수 ÷ 3)</b><br />
+        댓글 3개를 남기면 게시글 1개를 쓴 점수와 같아져요!
+      </p>
+      <ol id="ranking-list" class="ranking-list"></ol>
+    </div>
+  </div>
+
+  <!-- ============== 토스트 ============== -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
