@@ -543,12 +543,23 @@
     }
   }
 
-  async function addComment(postId, text, category = 'general') {
+  // postit 미리보기용 펜딩 이미지 — 키 형식: `${postId}|${category}`
+  const pendingPostitImages = new Map();
+
+  async function addComment(postId, text, category = 'general', image = null) {
     if (isGuest()) return toast(guestBlockMsg);
     const t = (text || '').trim();
-    if (!t) return;
+    if (!t && !image) {
+      toast('댓글 내용 또는 이미지를 첨부해주세요.');
+      return;
+    }
     try {
-      await api('POST', `/api/posts/${postId}/comments`, { text: t, category });
+      await api('POST', `/api/posts/${postId}/comments`, {
+        text: t,
+        category,
+        image,
+      });
+      pendingPostitImages.delete(`${postId}|${category}`);
       await refreshState();
     } catch (err) {
       toast(err.message);
@@ -681,7 +692,8 @@
     const cName = personDisplay(c);
     return `
       <div class="postit" style="background:${color}; --tilt:${tilt}deg;">
-        <div class="pt-text">${escapeHtml(c.text)}</div>
+        ${c.image ? `<img class="pt-image" src="${c.image}" alt="첨부 이미지" data-postit-image="${c.id}" />` : ''}
+        ${c.text ? `<div class="pt-text">${escapeHtml(c.text)}</div>` : ''}
         <div class="pt-by">
           ${c.isTeacher ? '👩‍🏫 ' : '🌱 '}${escapeHtml(cName)}
           ${tierBadgeHtml(c.authorKey)}
@@ -725,8 +737,15 @@
           <div class="tab-panel ${cat === detailTab ? '' : 'hidden'}" data-panel="${cat}">
             <div class="postit-grid">${grid}</div>
             <form class="postit-form" data-comment="${post.id}" data-category="${cat}">
-              <textarea required maxlength="400" placeholder="${placeholder}"></textarea>
-              <button type="submit">${buttonLabel}</button>
+              <div class="postit-form-row">
+                <textarea maxlength="400" placeholder="${placeholder}"></textarea>
+                <label class="postit-attach" title="이미지 첨부">
+                  📎
+                  <input type="file" accept="image/*" class="postit-file" hidden />
+                </label>
+                <button type="submit">${buttonLabel}</button>
+              </div>
+              <div class="postit-preview"></div>
             </form>
           </div>`;
       };
@@ -768,8 +787,15 @@
             <h4 class="wall-title">친구들의 포스트잇 (${post.comments.length})</h4>
             <div class="postit-grid">${postits}</div>
             <form class="postit-form" data-comment="${post.id}" data-category="general">
-              <textarea required maxlength="400" placeholder="포스트잇에 한마디 남겨보세요!"></textarea>
-              <button type="submit">붙이기 📌</button>
+              <div class="postit-form-row">
+                <textarea maxlength="400" placeholder="포스트잇에 한마디 남겨보세요!"></textarea>
+                <label class="postit-attach" title="이미지 첨부">
+                  📎
+                  <input type="file" accept="image/*" class="postit-file" hidden />
+                </label>
+                <button type="submit">붙이기 📌</button>
+              </div>
+              <div class="postit-preview"></div>
             </form>
           </div>
         </div>`;
@@ -830,13 +856,40 @@
     $('#detail-body')
       .querySelectorAll('[data-comment]')
       .forEach((form) => {
+        const cat = form.dataset.category || 'general';
+        const postId = form.dataset.comment;
+        const key = `${postId}|${cat}`;
+
+        // 첨부 파일 선택 → 압축 → 펜딩 맵에 저장 → 미리보기 갱신
+        const fileInput = form.querySelector('.postit-file');
+        if (fileInput) {
+          fileInput.addEventListener('change', async (e) => {
+            const f = e.target.files?.[0];
+            if (!f) return;
+            try {
+              const dataURL = await fileToCompressedDataURL(f, 1200, 0.82);
+              pendingPostitImages.set(key, dataURL);
+              renderPostitPreview(form);
+            } catch {
+              toast('이미지를 불러오지 못했어요.');
+            }
+            // 같은 파일 재선택 가능하도록 초기화
+            e.target.value = '';
+          });
+        }
+
+        // 폼 제출
         form.addEventListener('submit', (e) => {
           e.preventDefault();
           const ta = form.querySelector('textarea');
-          const cat = form.dataset.category || 'general';
-          addComment(form.dataset.comment, ta.value, cat);
+          const image = pendingPostitImages.get(key) || null;
+          addComment(postId, ta.value, cat, image);
           ta.value = '';
+          // 미리보기는 addComment 성공 후 refreshState 가 다시 그리며 자동 정리됨
         });
+
+        // 처음 렌더 시 펜딩 이미지가 있으면 미리보기 복원
+        renderPostitPreview(form);
       });
 
     $('#detail-body')
@@ -846,6 +899,39 @@
           deleteComment(post.id, b.dataset.delC)
         )
       );
+
+    // 포스트잇 안 첨부 이미지 클릭 시 라이트박스 같은 게 없어도 되니 일단 새 탭으로
+    $('#detail-body')
+      .querySelectorAll('[data-postit-image]')
+      .forEach((img) => {
+        img.addEventListener('click', () => {
+          const w = window.open();
+          if (w) w.document.write(`<img src="${img.src}" style="max-width:100%;height:auto;display:block;margin:auto;background:#000" />`);
+        });
+      });
+  };
+
+  // 포스트잇 폼의 미리보기 영역을 갱신
+  const renderPostitPreview = (form) => {
+    const cat = form.dataset.category || 'general';
+    const postId = form.dataset.comment;
+    const key = `${postId}|${cat}`;
+    const dataURL = pendingPostitImages.get(key);
+    const preview = form.querySelector('.postit-preview');
+    if (!preview) return;
+    if (!dataURL) {
+      preview.innerHTML = '';
+      return;
+    }
+    preview.innerHTML = `
+      <div class="pp-thumb">
+        <img src="${dataURL}" alt="첨부 미리보기" />
+        <button type="button" class="pp-remove" title="첨부 취소">✕</button>
+      </div>`;
+    preview.querySelector('.pp-remove').addEventListener('click', () => {
+      pendingPostitImages.delete(key);
+      renderPostitPreview(form);
+    });
   };
 
   // -------- 책플루언서 (명예의 전당) --------

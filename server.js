@@ -91,6 +91,9 @@ const commentCols = db.prepare("PRAGMA table_info(comments)").all().map(c => c.n
 if (!commentCols.includes('category')) {
   db.exec("ALTER TABLE comments ADD COLUMN category TEXT NOT NULL DEFAULT 'general'");
 }
+if (!commentCols.includes('image')) {
+  db.exec("ALTER TABLE comments ADD COLUMN image TEXT");
+}
 
 // 기존 DB에 isAdmin 컬럼이 없으면 추가
 const userCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
@@ -326,6 +329,7 @@ const buildPostsResponse = () => {
     comments: commentStmt.all(p.id).map((c) => ({
       id: c.id,
       text: c.text,
+      image: c.image || null,
       authorKey: c.authorKey,
       authorName: c.authorName,
       isTeacher: !!c.isTeacher,
@@ -418,8 +422,14 @@ app.post('/api/posts/:id/like', authRequired, blockGuest, (req, res) => {
 const VALID_CATEGORIES = new Set(['general', 'review', 'question']);
 app.post('/api/posts/:id/comments', authRequired, blockGuest, (req, res) => {
   const text = String(req.body?.text || '').trim();
-  if (!text) return res.status(400).json({ error: '댓글 내용을 입력해주세요.' });
+  const image = req.body?.image ? String(req.body.image) : null;
+  if (!text && !image) {
+    return res.status(400).json({ error: '댓글 내용 또는 이미지를 첨부해주세요.' });
+  }
   if (text.length > 400) return res.status(400).json({ error: '너무 긴 댓글은 줄여주세요.' });
+  if (image && !/^data:image\/(png|jpe?g|gif|webp);base64,/.test(image)) {
+    return res.status(400).json({ error: '이미지 형식이 올바르지 않습니다.' });
+  }
   const rawCat = String(req.body?.category || 'general');
   const category = VALID_CATEGORIES.has(rawCat) ? rawCat : 'general';
 
@@ -429,12 +439,12 @@ app.post('/api/posts/:id/comments', authRequired, blockGuest, (req, res) => {
   const finalCat = post.target === 'teacher' ? category : 'general';
   const cid = uid();
   db.prepare(
-    `INSERT INTO comments (id,postId,text,authorKey,authorName,isTeacher,category,createdAt)
-     VALUES (?,?,?,?,?,?,?,?)`
+    `INSERT INTO comments (id,postId,text,authorKey,authorName,isTeacher,category,image,createdAt)
+     VALUES (?,?,?,?,?,?,?,?,?)`
   ).run(
     cid, req.params.id, text,
     req.user.key, req.user.name,
-    req.user.isTeacher ? 1 : 0, finalCat, Date.now()
+    req.user.isTeacher ? 1 : 0, finalCat, image, Date.now()
   );
   res.json({ id: cid });
 });
