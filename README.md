@@ -26,7 +26,9 @@ npm start
 ### 1) 새 프로젝트 만들기
 1. [railway.app](https://railway.app) 로그인 → **New Project** → **Deploy from GitHub repo**
 2. 이 저장소(`read-a-book`)와 브랜치 `claude/book-sharing-platform-0BEaK` 선택
-3. Railway가 `package.json` 을 감지해 NIXPACKS 빌드 → `npm start` 자동 실행
+3. 저장소에 포함된 `Dockerfile` 로 자동 빌드 → `node server.js` 실행
+   - `better-sqlite3` 네이티브 모듈 컴파일을 위해 Dockerfile 빌드를 사용합니다.
+   - NIXPACKS로 빌드하다 실패한 적이 있다면 Settings → Build에서 빌더가 **Dockerfile** 인지 확인하세요.
 
 ### 2) 영구 저장소 (Volume) 연결 — **중요**
 SQLite 파일이 재배포 시 사라지지 않도록 Volume을 붙여야 합니다.
