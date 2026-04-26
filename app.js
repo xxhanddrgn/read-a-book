@@ -702,7 +702,47 @@
       </div>`;
   };
 
+  // 8초 폴링 등으로 renderDetail 이 다시 호출돼도 작성 중이던 포스트잇 입력은 유지하기 위해
+  // 재렌더 직전에 textarea 값과 커서 위치를 스냅샷 잡고, 새 DOM 에 그대로 복원한다.
+  const snapshotPostitDrafts = () => {
+    const drafts = new Map();
+    let focused = null;
+    document
+      .querySelectorAll('#detail-body .postit-form')
+      .forEach((form) => {
+        const cat = form.dataset.category || 'general';
+        const key = `${form.dataset.comment}|${cat}`;
+        const ta = form.querySelector('textarea');
+        if (!ta) return;
+        drafts.set(key, ta.value);
+        if (document.activeElement === ta) {
+          focused = { key, start: ta.selectionStart, end: ta.selectionEnd };
+        }
+      });
+    return { drafts, focused };
+  };
+
+  const restorePostitDrafts = ({ drafts, focused }) => {
+    document
+      .querySelectorAll('#detail-body .postit-form')
+      .forEach((form) => {
+        const cat = form.dataset.category || 'general';
+        const key = `${form.dataset.comment}|${cat}`;
+        if (!drafts.has(key)) return;
+        const ta = form.querySelector('textarea');
+        if (!ta) return;
+        ta.value = drafts.get(key);
+        if (focused && focused.key === key) {
+          ta.focus();
+          try {
+            ta.setSelectionRange(focused.start, focused.end);
+          } catch {}
+        }
+      });
+  };
+
   const renderDetail = (id) => {
+    const draftSnapshot = snapshotPostitDrafts();
     const post = findPost(id);
     if (!post) return;
     const me = userKey(session.user);
@@ -909,6 +949,9 @@
           if (w) w.document.write(`<img src="${img.src}" style="max-width:100%;height:auto;display:block;margin:auto;background:#000" />`);
         });
       });
+
+    // 폴링 등으로 인한 재렌더 직전에 잡아둔 입력값과 커서 위치를 복원
+    restorePostitDrafts(draftSnapshot);
   };
 
   // 포스트잇 폼의 미리보기 영역을 갱신
