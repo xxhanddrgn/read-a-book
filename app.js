@@ -98,29 +98,29 @@
     diamond:     '게시글 25개 + 댓글 50개 + 좋아요 100개',
     master:      '게시글 35개 + 댓글 70개 + 좋아요 140개',
     grandmaster: '게시글 50개 + 댓글 100개 + 좋아요 200개',
-    challenger:  '상위 1~2명만 도달 가능 (학급 내 경쟁)',
+    challenger:  '상위 1~2명만 도달 가능',
   };
 
   // 학생 키 (학년-반-번호-이름)만 티어 적용. 교사/관리자/게스트는 제외.
   const isStudentKey = (k) => typeof k === 'string' && /^\d/.test(k);
 
   // userKey 의 활동량 (rankingResetAt 이후만 카운트)
+  // likes = 본인이 '누른' 좋아요 수 (게시글 작성자 기준이 아니라 좋아요를 누른 사용자 기준)
   const computeUserStats = (uKey) => {
     const since = Number(state.rankingResetAt) || 0;
     let posts = 0, comments = 0, likes = 0;
-    state.studentPosts.forEach((p) => {
-      if (p.authorInfo.key === uKey && p.createdAt >= since) {
+    const all = [...state.studentPosts, ...state.teacherPosts];
+    all.forEach((p) => {
+      if (p.authorInfo.key === uKey && p.target === 'student' && p.createdAt >= since) {
         posts++;
-        likes += p.likes.length;
       }
       p.comments.forEach((c) => {
         if (c.authorKey === uKey && c.createdAt >= since) comments++;
       });
-    });
-    state.teacherPosts.forEach((p) => {
-      p.comments.forEach((c) => {
-        if (c.authorKey === uKey && c.createdAt >= since) comments++;
-      });
+      // 좋아요는 timestamp 가 없어 게시글 createdAt 으로 대체 — 초기화 이후 만들어진 글에 대한 좋아요만 인정
+      if (p.createdAt >= since && Array.isArray(p.likes) && p.likes.includes(uKey)) {
+        likes++;
+      }
     });
     return { posts, comments, likes };
   };
@@ -970,7 +970,7 @@
         <div class="my-tier-stats">
           <div class="my-stat"><b>${stats.posts}</b> 게시글 × 10점</div>
           <div class="my-stat"><b>${stats.comments}</b> 댓글 × 2점</div>
-          <div class="my-stat"><b>${stats.likes}</b> 받은 좋아요 × 0.5점</div>
+          <div class="my-stat"><b>${stats.likes}</b> 누른 좋아요 × 0.5점</div>
         </div>
         ${
           next
