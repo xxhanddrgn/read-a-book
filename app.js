@@ -296,9 +296,9 @@
   }
 
   async function onAdminLogin() {
-    const name = prompt('관리자 이름을 입력해주세요. (기본: admin)');
+    const name = prompt('관리자 이름을 입력해주세요.');
     if (!name) return;
-    const password = prompt('관리자 비밀번호를 입력해주세요. (기본: admin123)');
+    const password = prompt('관리자 비밀번호를 입력해주세요.');
     if (!password) return;
     try {
       const data = await api('POST', '/api/auth/login', {
