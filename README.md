@@ -25,7 +25,7 @@ npm start
 
 ### 1) 새 프로젝트 만들기
 1. [railway.app](https://railway.app) 로그인 → **New Project** → **Deploy from GitHub repo**
-2. 이 저장소(`read-a-book`)와 브랜치 `claude/book-sharing-platform-zO24g` 선택
+2. 이 저장소(`read-a-book`)와 브랜치 `claude/book-sharing-platform-0BEaK` 선택
 3. Railway가 `package.json` 을 감지해 NIXPACKS 빌드 → `npm start` 자동 실행
 
 ### 2) 영구 저장소 (Volume) 연결 — **중요**
