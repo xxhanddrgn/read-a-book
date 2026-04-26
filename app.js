@@ -647,7 +647,7 @@
             </span>
             <div class="post-overlay">
               <h3 class="p-title">${escapeHtml(p.title)}</h3>
-              <div class="p-author">✏ ${escapeHtml(p.author)}</div>
+              <div class="p-author">작가: ${escapeHtml(p.author)}</div>
             </div>
           </div>
           <div class="post-meta">
@@ -781,7 +781,7 @@
         <div class="detail-info">
           <h2>${escapeHtml(post.title)}</h2>
           <p class="by">
-            ✏ ${escapeHtml(post.author)} · 올린이: ${post.authorInfo.isTeacher ? '👩‍🏫 ' : ''}${escapeHtml(authorDisplay)}
+            작가: ${escapeHtml(post.author)} · 올린이: ${post.authorInfo.isTeacher ? '👩‍🏫 ' : ''}${escapeHtml(authorDisplay)}
             ${tierBadgeHtml(post.authorInfo.key)}
           </p>
           <div class="stats">
