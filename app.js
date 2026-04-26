@@ -296,36 +296,15 @@
   }
 
   async function onAdminLogin() {
-    const name = prompt('관리자 이름을 입력해주세요. (예: admin)');
+    const name = prompt('관리자 이름을 입력해주세요. (기본: admin)');
     if (!name) return;
-    const password = prompt('관리자 비밀번호 4자리를 입력해주세요.');
+    const password = prompt('관리자 비밀번호를 입력해주세요. (기본: admin123)');
     if (!password) return;
-    if (password.length !== 4) {
-      toast('비밀번호는 4자리예요.');
-      return;
-    }
-    // 1차: 코드 없이 시도 (이미 등록된 관리자면 성공)
     try {
       const data = await api('POST', '/api/auth/login', {
-        name: name.trim(), password, isAdmin: true,
-      });
-      session = { token: data.token, user: data.user };
-      saveSession();
-      toast(`${data.user.name} 관리자, 환영합니다! 🛡`);
-      showApp();
-      return;
-    } catch (err) {
-      if (!/코드/.test(err.message)) {
-        toast(err.message);
-        return;
-      }
-    }
-    // 2차: 가입 코드 요구
-    const adminCode = prompt('관리자 가입 코드를 입력해주세요.');
-    if (!adminCode) return;
-    try {
-      const data = await api('POST', '/api/auth/login', {
-        name: name.trim(), password, isAdmin: true, adminCode,
+        name: name.trim(),
+        password,
+        isAdmin: true,
       });
       session = { token: data.token, user: data.user };
       saveSession();

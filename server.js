@@ -2,11 +2,12 @@
  * 우리 반 책장 — 백엔드 (Express + SQLite)
  *
  * 환경변수:
- *   PORT          - 기본 3000 (Railway가 자동 주입)
- *   DATA_DIR      - 기본 ./data. Railway에선 /data (Volume) 권장
- *   APP_SECRET    - 비밀번호 해싱 솔트. 운영시 반드시 변경.
- *   TEACHER_CODE  - 교사 등록용 가입 코드. 기본 0000.
- *   ADMIN_CODE    - 관리자 등록용 가입 코드. 기본 wbadmin.
+ *   PORT            - 기본 3000 (Railway가 자동 주입)
+ *   DATA_DIR        - 기본 ./data. Railway에선 /data (Volume) 권장
+ *   APP_SECRET      - 비밀번호 해싱 솔트. 운영시 반드시 변경.
+ *   TEACHER_CODE    - 교사 등록용 가입 코드. 기본 0000.
+ *   ADMIN_NAME      - 관리자 로그인 이름. 기본 admin.
+ *   ADMIN_PASSWORD  - 관리자 로그인 비밀번호. 기본 admin123. 운영시 반드시 변경.
  * ========================================================= */
 const express = require('express');
 const path = require('path');
@@ -19,12 +20,13 @@ const HOST = '0.0.0.0';
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const APP_SECRET = process.env.APP_SECRET || 'wb-bookshelf-default-secret-please-change';
 const TEACHER_CODE = process.env.TEACHER_CODE || '0000';
-const ADMIN_CODE = process.env.ADMIN_CODE || 'wbadmin';
+const ADMIN_NAME = process.env.ADMIN_NAME || 'admin';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 if (TEACHER_CODE === '0000') {
   console.warn('⚠️  TEACHER_CODE 가 기본값(0000)입니다. 운영 시 반드시 변경하세요.');
 }
-if (ADMIN_CODE === 'wbadmin') {
-  console.warn('⚠️  ADMIN_CODE 가 기본값(wbadmin)입니다. 운영 시 반드시 변경하세요.');
+if (ADMIN_PASSWORD === 'admin123') {
+  console.warn('⚠️  ADMIN_PASSWORD 가 기본값(admin123)입니다. 운영 시 ADMIN_PASSWORD 환경변수로 반드시 변경하세요.');
 }
 
 // ---------- DB 초기화 ----------
@@ -184,7 +186,7 @@ app.post('/api/auth/login', (req, res) => {
     const {
       grade, classNo, number, name, password,
       isTeacher = false, teacherCode = '',
-      isAdmin = false, adminCode = '',
+      isAdmin = false,
     } = req.body || {};
     const teacher = !!isTeacher;
     const admin = !!isAdmin;
@@ -192,15 +194,42 @@ app.post('/api/auth/login', (req, res) => {
     const pw = String(password || '');
 
     if (!cleanName) return res.status(400).json({ error: '이름을 입력해주세요.' });
+
+    // ----- 관리자: 가입 코드 없이 ADMIN_NAME / ADMIN_PASSWORD 로 고정 로그인 -----
+    if (admin) {
+      if (cleanName !== ADMIN_NAME || pw !== ADMIN_PASSWORD) {
+        return res.status(401).json({ error: '관리자 이름 또는 비밀번호가 올바르지 않습니다.' });
+      }
+      const key = userKey({ name: cleanName, isAdmin: true });
+      const ph = hashPw(pw);
+      const now = Date.now();
+      let row = db.prepare('SELECT * FROM users WHERE key = ?').get(key);
+      if (!row) {
+        db.prepare(
+          `INSERT INTO users (key,name,grade,classNo,number,isTeacher,isAdmin,passwordHash,createdAt)
+           VALUES (?,?,?,?,?,?,?,?,?)`
+        ).run(key, cleanName, 0, 0, 0, 0, 1, ph, now);
+        row = db.prepare('SELECT * FROM users WHERE key = ?').get(key);
+      } else if (row.passwordHash !== ph) {
+        // ADMIN_PASSWORD 가 환경변수로 바뀐 경우 해시 동기화
+        db.prepare('UPDATE users SET passwordHash = ?, isAdmin = 1 WHERE key = ?').run(ph, key);
+        row = db.prepare('SELECT * FROM users WHERE key = ?').get(key);
+      }
+      const token = newToken();
+      db.prepare('UPDATE users SET token = ? WHERE key = ?').run(token, key);
+      return res.json({ token, user: toUserDTO(row) });
+    }
+
+    // ----- 학생/교사: 4자리 비밀번호 -----
     if (pw.length !== 4) return res.status(400).json({ error: '비밀번호는 4글자여야 합니다.' });
-    if (!teacher && !admin) {
+    if (!teacher) {
       if (!Number.isFinite(+grade) || !Number.isFinite(+classNo) || !Number.isFinite(+number))
         return res.status(400).json({ error: '학년/반/번호를 입력해주세요.' });
     }
 
     const u = {
       grade: +grade || 0, classNo: +classNo || 0, number: +number || 0,
-      name: cleanName, isTeacher: teacher, isAdmin: admin,
+      name: cleanName, isTeacher: teacher,
     };
     const key = userKey(u);
     const ph = hashPw(pw);
@@ -216,15 +245,12 @@ app.post('/api/auth/login', (req, res) => {
       if (teacher && String(teacherCode) !== TEACHER_CODE) {
         return res.status(403).json({ error: '교사 가입 코드가 올바르지 않습니다.' });
       }
-      if (admin && String(adminCode) !== ADMIN_CODE) {
-        return res.status(403).json({ error: '관리자 가입 코드가 올바르지 않습니다.' });
-      }
       db.prepare(
         `INSERT INTO users (key,name,grade,classNo,number,isTeacher,isAdmin,passwordHash,createdAt)
          VALUES (?,?,?,?,?,?,?,?,?)`
       ).run(
         key, u.name, u.grade, u.classNo, u.number,
-        teacher ? 1 : 0, admin ? 1 : 0, ph, now
+        teacher ? 1 : 0, 0, ph, now
       );
       row = db.prepare('SELECT * FROM users WHERE key = ?').get(key);
     }
