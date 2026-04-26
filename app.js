@@ -13,6 +13,7 @@
   let session = null; // { token, user }
   let state = { teacherPosts: [], studentPosts: [] };
   let currentDetailId = null;
+  let detailTab = 'review'; // 'review' | 'question' (교사 게시글 상세에서만 사용)
   let pollTimer = null;
   let anonMode = localStorage.getItem(ANON_KEY) === '1';
   const aliasMap = new Map(); // authorKey → '학생 N'
@@ -32,7 +33,11 @@
     u.isTeacher ? `T-${u.name}` : `${u.grade}-${u.classNo}-${u.number}-${u.name}`;
 
   const userLabel = (u) =>
-    u.isTeacher ? `👩‍🏫 ${u.name} 선생님` : `${u.grade}-${u.classNo} ${u.number}번 ${u.name}`;
+    u.isGuest
+      ? '👀 게스트'
+      : u.isTeacher
+      ? `👩‍🏫 ${u.name} 선생님`
+      : `${u.grade}-${u.classNo} ${u.number}번 ${u.name}`;
 
   // -------- 익명 모드 (교사 전용) --------
   const showAnon = () => !!session?.user?.isTeacher && anonMode;
@@ -165,12 +170,15 @@
   // -------- 화면 전환 --------
   const showLogin = () => {
     stopPolling();
+    document.body.classList.remove('guest-mode');
+    $('#guest-banner')?.classList.add('hidden');
     $('#login-screen').classList.remove('hidden');
     $('#app-screen').classList.add('hidden');
   };
   const showApp = async () => {
     $('#login-screen').classList.add('hidden');
     $('#app-screen').classList.remove('hidden');
+    applyGuestMode();
     renderUserArea();
     await refreshState();
     startPolling();
@@ -245,11 +253,29 @@
     }
   }
 
+  async function onGuestEnter() {
+    try {
+      const data = await api('POST', '/api/auth/guest', {});
+      session = { token: data.token, user: data.user };
+      saveSession();
+      toast('둘러보기 모드로 들어왔어요 👀');
+      showApp();
+    } catch (err) {
+      toast(err.message || '게스트 입장 실패');
+    }
+  }
+
   async function logout() {
     try { await api('POST', '/api/auth/logout'); } catch {}
     clearSession();
     showLogin();
   }
+
+  const isGuest = () => !!session?.user?.isGuest;
+  const applyGuestMode = () => {
+    document.body.classList.toggle('guest-mode', isGuest());
+    $('#guest-banner').classList.toggle('hidden', !isGuest());
+  };
 
   // -------- 폴링 --------
   function startPolling() {
@@ -344,7 +370,10 @@
   }
 
   // -------- 좋아요 / 댓글 --------
+  const guestBlockMsg = '둘러보기 모드에서는 사용할 수 없어요. 로그인 후 이용해 주세요!';
+
   async function toggleLike(postId) {
+    if (isGuest()) return toast(guestBlockMsg);
     try {
       await api('POST', `/api/posts/${postId}/like`);
       await refreshState();
@@ -353,11 +382,12 @@
     }
   }
 
-  async function addComment(postId, text) {
+  async function addComment(postId, text, category = 'general') {
+    if (isGuest()) return toast(guestBlockMsg);
     const t = (text || '').trim();
     if (!t) return;
     try {
-      await api('POST', `/api/posts/${postId}/comments`, { text: t });
+      await api('POST', `/api/posts/${postId}/comments`, { text: t, category });
       await refreshState();
     } catch (err) {
       toast(err.message);
@@ -487,8 +517,24 @@
 
   const openDetail = (id) => {
     currentDetailId = id;
+    detailTab = 'review'; // 교사 게시글이면 기본은 소감 탭
     renderDetail(id);
     openModal('detail-modal');
+  };
+
+  const renderPostit = (c, i, me) => {
+    const color = POSTIT_COLORS[i % POSTIT_COLORS.length];
+    const tilt = ((i * 37) % 7) - 3;
+    const canDelete = c.authorKey === me || session.user.isTeacher;
+    const cName = personDisplay(c);
+    return `
+      <div class="postit" style="background:${color}; --tilt:${tilt}deg;">
+        <div class="pt-text">${escapeHtml(c.text)}</div>
+        <div class="pt-by">
+          ${c.isTeacher ? '👩‍🏫 ' : '🌱 '}${escapeHtml(cName)}
+          ${canDelete ? `<button class="link-btn" data-del-c="${c.id}" style="margin-left:6px;">지우기</button>` : ''}
+        </div>
+      </div>`;
   };
 
   const renderDetail = (id) => {
@@ -497,31 +543,87 @@
     const me = userKey(session.user);
     const liked = post.likes.includes(me);
     const isMine = post.authorInfo.key === me || session.user.isTeacher;
+    const isTeacherPost = post.target === 'teacher';
 
     const covers = post.images
       .map((src) => `<img src="${src}" alt="${escapeHtml(post.title)}" />`)
       .join('');
 
-    const postitsHtml = post.comments.length
-      ? post.comments
-          .map((c, i) => {
-            const color = POSTIT_COLORS[i % POSTIT_COLORS.length];
-            const tilt = ((i * 37) % 7) - 3;
-            const canDelete = c.authorKey === me || session.user.isTeacher;
-            const cName = personDisplay(c);
-            return `
-            <div class="postit" style="background:${color}; --tilt:${tilt}deg;">
-              <div class="pt-text">${escapeHtml(c.text)}</div>
-              <div class="pt-by">
-                ${c.isTeacher ? '👩‍🏫 ' : '🌱 '}${escapeHtml(cName)}
-                ${canDelete ? `<button class="link-btn" data-del-c="${c.id}" style="margin-left:6px;">지우기</button>` : ''}
-              </div>
-            </div>`;
-          })
-          .join('')
-      : '<div class="empty-wall">아직 댓글이 없어요. 첫 포스트잇을 붙여볼까요? 💛</div>';
-
     const authorDisplay = personDisplay(post.authorInfo);
+
+    // 본문 영역: 교사 게시글이면 탭 + 분리된 게시판, 학생이면 기존 담벼락
+    let bodySection;
+    if (isTeacherPost) {
+      const reviewComments = post.comments.filter((c) => c.category === 'review');
+      const questionComments = post.comments.filter((c) => c.category === 'question');
+      const activeIsReview = detailTab !== 'question';
+
+      const renderPanel = (cat, cs, emptyMsg) => {
+        const grid = cs.length
+          ? cs.map((c, i) => renderPostit(c, i, me)).join('')
+          : `<div class="empty-wall">${emptyMsg}</div>`;
+        const placeholder =
+          cat === 'review'
+            ? '이 책을 읽고 어떤 생각이 들었나요?'
+            : '친구들과 함께 이야기 나누고 싶은 질문을 적어보세요!';
+        const buttonLabel = cat === 'review' ? '💛 소감 올리기' : '❓ 질문 올리기';
+        return `
+          <div class="tab-panel ${cat === detailTab ? '' : 'hidden'}" data-panel="${cat}">
+            <div class="postit-grid">${grid}</div>
+            <form class="postit-form" data-comment="${post.id}" data-category="${cat}">
+              <textarea required maxlength="400" placeholder="${placeholder}"></textarea>
+              <button type="submit">${buttonLabel}</button>
+            </form>
+          </div>`;
+      };
+
+      bodySection = `
+        <div class="detail-body">
+          <h3>📚 선생님의 소개</h3>
+          <div class="review">${escapeHtml(post.review)}</div>
+
+          <h3>💭 선생님의 질문</h3>
+          <div class="question-box"><div class="question">${escapeHtml(post.question)}</div></div>
+
+          <div class="onm-tabs" role="tablist">
+            <button class="onm-tab ${activeIsReview ? 'active' : ''}" data-tab="review" role="tab">
+              💛 소감 나누기 <span class="tab-count">${reviewComments.length}</span>
+            </button>
+            <button class="onm-tab ${!activeIsReview ? 'active' : ''}" data-tab="question" role="tab">
+              ❓ 질문 만들기 <span class="tab-count">${questionComments.length}</span>
+            </button>
+          </div>
+
+          <div class="wall onm-wall">
+            ${renderPanel('review', reviewComments, '아직 소감이 없어요. 첫 소감을 남겨볼까요? 💛')}
+            ${renderPanel('question', questionComments, '아직 질문이 없어요. 궁금한 걸 적어볼까요? ❓')}
+          </div>
+        </div>`;
+    } else {
+      const postits = post.comments.length
+        ? post.comments.map((c, i) => renderPostit(c, i, me)).join('')
+        : '<div class="empty-wall">아직 댓글이 없어요. 첫 포스트잇을 붙여볼까요? 💛</div>';
+
+      bodySection = `
+        <div class="detail-body">
+          <h3>📝 ${escapeHtml(authorDisplay)} 친구의 소감</h3>
+          <div class="review">${escapeHtml(post.review)}</div>
+
+          <h3>💭 함께 생각해볼 질문</h3>
+          <div class="question-box"><div class="question">${escapeHtml(post.question)}</div></div>
+
+          <h3>🧡 우리들의 담벼락</h3>
+          <div class="wall">
+            <h4 class="wall-title">친구들의 포스트잇 (${post.comments.length})</h4>
+            <div class="postit-grid">${postits}</div>
+            <form class="postit-form" data-comment="${post.id}" data-category="general">
+              <textarea required maxlength="400" placeholder="포스트잇에 한마디 남겨보세요!"></textarea>
+              <button type="submit">붙이기 📌</button>
+            </form>
+          </div>
+        </div>`;
+    }
+
     $('#detail-body').innerHTML = `
       <div class="detail-hero">
         <div class="cover-stack">${covers}</div>
@@ -542,24 +644,7 @@
           </div>
         </div>
       </div>
-
-      <div class="detail-body">
-        <h3>📝 ${escapeHtml(authorDisplay)} 친구의 소감</h3>
-        <div class="review">${escapeHtml(post.review)}</div>
-
-        <h3>💭 함께 생각해볼 질문</h3>
-        <div class="question-box"><div class="question">${escapeHtml(post.question)}</div></div>
-
-        <h3>🧡 우리들의 담벼락</h3>
-        <div class="wall">
-          <h4 class="wall-title">친구들의 포스트잇 (${post.comments.length})</h4>
-          <div class="postit-grid">${postitsHtml}</div>
-          <form class="postit-form" data-comment="${post.id}">
-            <textarea required maxlength="400" placeholder="포스트잇에 한마디 남겨보세요!"></textarea>
-            <button type="submit">붙이기 📌</button>
-          </form>
-        </div>
-      </div>
+      ${bodySection}
     `;
 
     $('#detail-body')
@@ -574,13 +659,28 @@
         deletePost(delBtn.dataset.delPost)
       );
 
-    const form = $('#detail-body').querySelector('[data-comment]');
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const ta = form.querySelector('textarea');
-      addComment(form.dataset.comment, ta.value);
-      ta.value = '';
-    });
+    // 탭 전환 (교사 게시글 한정)
+    $('#detail-body')
+      .querySelectorAll('.onm-tab')
+      .forEach((b) =>
+        b.addEventListener('click', () => {
+          detailTab = b.dataset.tab;
+          renderDetail(id);
+        })
+      );
+
+    // 댓글 작성 폼들 (탭별로 여러 개 있을 수 있음)
+    $('#detail-body')
+      .querySelectorAll('[data-comment]')
+      .forEach((form) => {
+        form.addEventListener('submit', (e) => {
+          e.preventDefault();
+          const ta = form.querySelector('textarea');
+          const cat = form.dataset.category || 'general';
+          addComment(form.dataset.comment, ta.value, cat);
+          ta.value = '';
+        });
+      });
 
     $('#detail-body')
       .querySelectorAll('[data-del-c]')
@@ -687,6 +787,8 @@
   const bind = () => {
     $('#login-form').addEventListener('submit', onLoginSubmit);
     $('#teacher-login-btn').addEventListener('click', onTeacherLogin);
+    $('#guest-login-btn').addEventListener('click', onGuestEnter);
+    $('#guest-go-login').addEventListener('click', logout);
     $('#logout-btn').addEventListener('click', logout);
 
     $('#new-post-fab').addEventListener('click', () => openNewPost(false));

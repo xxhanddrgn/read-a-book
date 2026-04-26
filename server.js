@@ -72,11 +72,18 @@ db.exec(`
     authorKey TEXT NOT NULL,
     authorName TEXT NOT NULL,
     isTeacher INTEGER NOT NULL DEFAULT 0,
+    category TEXT NOT NULL DEFAULT 'general',
     createdAt INTEGER NOT NULL,
     FOREIGN KEY (postId) REFERENCES posts(id) ON DELETE CASCADE
   );
   CREATE INDEX IF NOT EXISTS idx_comments_postId ON comments(postId, createdAt);
 `);
+
+// 기존 DB에 category 컬럼이 없으면 추가 (마이그레이션)
+const commentCols = db.prepare("PRAGMA table_info(comments)").all().map(c => c.name);
+if (!commentCols.includes('category')) {
+  db.exec("ALTER TABLE comments ADD COLUMN category TEXT NOT NULL DEFAULT 'general'");
+}
 
 // ---------- 유틸 ----------
 const uid = () =>
@@ -90,6 +97,8 @@ const userKey = ({ grade, classNo, number, name, isTeacher }) =>
     ? `T-${name.trim()}`
     : `${grade}-${classNo}-${number}-${name.trim()}`;
 
+const isGuestKey = (k) => typeof k === 'string' && k.startsWith('GUEST-');
+
 const toUserDTO = (u) => ({
   key: u.key,
   name: u.name,
@@ -97,6 +106,7 @@ const toUserDTO = (u) => ({
   classNo: u.classNo,
   number: u.number,
   isTeacher: !!u.isTeacher,
+  isGuest: isGuestKey(u.key),
 });
 
 // ---------- 앱 ----------
@@ -116,6 +126,16 @@ function authRequired(req, res, next) {
   const u = authStmt.get(token);
   if (!u) return res.status(401).json({ error: '세션이 만료되었습니다. 다시 로그인해주세요.' });
   req.user = u;
+  next();
+}
+
+// 게스트는 쓰기 작업 금지
+function blockGuest(req, res, next) {
+  if (isGuestKey(req.user?.key)) {
+    return res.status(403).json({
+      error: '둘러보기 모드에서는 글·좋아요·댓글을 남길 수 없어요. 로그인 후 이용해 주세요!',
+    });
+  }
   next();
 }
 
@@ -171,8 +191,34 @@ app.post('/api/auth/login', (req, res) => {
   }
 });
 
+// 게스트 (둘러보기) — 비밀번호 없이 단기 토큰 발급. 24시간 지난 게스트는 정리.
+app.post('/api/auth/guest', (_req, res) => {
+  try {
+    const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    db.prepare("DELETE FROM users WHERE key LIKE 'GUEST-%' AND createdAt < ?").run(dayAgo);
+    const id = crypto.randomBytes(6).toString('hex');
+    const key = `GUEST-${Date.now().toString(36)}-${id}`;
+    const token = newToken();
+    const now = Date.now();
+    db.prepare(
+      `INSERT INTO users (key,name,grade,classNo,number,isTeacher,passwordHash,token,createdAt)
+       VALUES (?,?,?,?,?,?,?,?,?)`
+    ).run(key, '게스트', 0, 0, 0, 0, crypto.randomBytes(32).toString('hex'), token, now);
+    const row = db.prepare('SELECT * FROM users WHERE key = ?').get(key);
+    res.json({ token, user: toUserDTO(row) });
+  } catch (err) {
+    console.error('guest error:', err);
+    res.status(500).json({ error: '게스트 입장 실패' });
+  }
+});
+
 app.post('/api/auth/logout', authRequired, (req, res) => {
-  db.prepare('UPDATE users SET token = NULL WHERE key = ?').run(req.user.key);
+  // 게스트가 로그아웃하면 흔적 자체를 지움
+  if (isGuestKey(req.user.key)) {
+    db.prepare('DELETE FROM users WHERE key = ?').run(req.user.key);
+  } else {
+    db.prepare('UPDATE users SET token = NULL WHERE key = ?').run(req.user.key);
+  }
   res.json({ ok: true });
 });
 
@@ -210,6 +256,7 @@ const buildPostsResponse = () => {
       authorKey: c.authorKey,
       authorName: c.authorName,
       isTeacher: !!c.isTeacher,
+      category: c.category || 'general',
       createdAt: c.createdAt,
     })),
   }));
@@ -223,7 +270,7 @@ app.get('/api/state', authRequired, (_req, res) => {
   res.json(buildPostsResponse());
 });
 
-app.post('/api/posts', authRequired, (req, res) => {
+app.post('/api/posts', authRequired, blockGuest, (req, res) => {
   try {
     const { target, title, author, review, question, images } = req.body || {};
     const t = target === 'teacher' ? 'teacher' : 'student';
@@ -260,7 +307,7 @@ app.post('/api/posts', authRequired, (req, res) => {
   }
 });
 
-app.delete('/api/posts/:id', authRequired, (req, res) => {
+app.delete('/api/posts/:id', authRequired, blockGuest, (req, res) => {
   const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
   if (!post) return res.status(404).json({ error: '게시글을 찾을 수 없습니다.' });
   if (post.authorKey !== req.user.key && !req.user.isTeacher) {
@@ -271,7 +318,7 @@ app.delete('/api/posts/:id', authRequired, (req, res) => {
 });
 
 // 좋아요 토글
-app.post('/api/posts/:id/like', authRequired, (req, res) => {
+app.post('/api/posts/:id/like', authRequired, blockGuest, (req, res) => {
   const post = db.prepare('SELECT 1 FROM posts WHERE id = ?').get(req.params.id);
   if (!post) return res.status(404).json({ error: '게시글을 찾을 수 없습니다.' });
   const exists = db
@@ -290,26 +337,31 @@ app.post('/api/posts/:id/like', authRequired, (req, res) => {
 });
 
 // 댓글 추가
-app.post('/api/posts/:id/comments', authRequired, (req, res) => {
+const VALID_CATEGORIES = new Set(['general', 'review', 'question']);
+app.post('/api/posts/:id/comments', authRequired, blockGuest, (req, res) => {
   const text = String(req.body?.text || '').trim();
   if (!text) return res.status(400).json({ error: '댓글 내용을 입력해주세요.' });
   if (text.length > 400) return res.status(400).json({ error: '너무 긴 댓글은 줄여주세요.' });
+  const rawCat = String(req.body?.category || 'general');
+  const category = VALID_CATEGORIES.has(rawCat) ? rawCat : 'general';
 
-  const post = db.prepare('SELECT 1 FROM posts WHERE id = ?').get(req.params.id);
+  const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
   if (!post) return res.status(404).json({ error: '게시글을 찾을 수 없습니다.' });
+  // 학생 게시글에서는 category 무시하고 general로 저장
+  const finalCat = post.target === 'teacher' ? category : 'general';
   const cid = uid();
   db.prepare(
-    `INSERT INTO comments (id,postId,text,authorKey,authorName,isTeacher,createdAt)
-     VALUES (?,?,?,?,?,?,?)`
+    `INSERT INTO comments (id,postId,text,authorKey,authorName,isTeacher,category,createdAt)
+     VALUES (?,?,?,?,?,?,?,?)`
   ).run(
     cid, req.params.id, text,
     req.user.key, req.user.name,
-    req.user.isTeacher ? 1 : 0, Date.now()
+    req.user.isTeacher ? 1 : 0, finalCat, Date.now()
   );
   res.json({ id: cid });
 });
 
-app.delete('/api/posts/:id/comments/:cid', authRequired, (req, res) => {
+app.delete('/api/posts/:id/comments/:cid', authRequired, blockGuest, (req, res) => {
   const c = db
     .prepare('SELECT * FROM comments WHERE id = ? AND postId = ?')
     .get(req.params.cid, req.params.id);
