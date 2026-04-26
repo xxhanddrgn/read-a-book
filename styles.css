@@ -750,21 +750,42 @@ body.guest-mode .post-meta {
 }
 
 /* ===================== 게시글 상세 ===================== */
+/* 상세 페이지: PC/크롬북에서 좌(책 정보) - 우(소감/질문/담벼락) 2단 그리드 */
+#detail-screen .page-body {
+  max-width: 1240px;
+}
+#detail-body {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+#detail-body .detail-hero {
+  position: sticky;
+  top: 88px;
+}
+#detail-body .detail-body {
+  margin-top: 0;
+}
+
 .detail-card {
   max-width: 820px;
   padding: 0;
   overflow: hidden;
 }
 
+/* 좁은 좌측 컬럼에 맞춰 hero는 항상 세로(컬럼) 배치 */
 .detail-hero {
   background: linear-gradient(135deg, #fff3e0, #ffe1c2);
-  padding: 24px 24px 18px;
+  padding: 22px 20px 18px;
   display: flex;
-  gap: 18px;
-  align-items: flex-start;
+  flex-direction: column;
+  gap: 14px;
+  align-items: center;
+  text-align: center;
   border-radius: 18px;
   box-shadow: var(--shadow);
-  margin-bottom: 6px;
+  margin-bottom: 0;
 }
 .detail-body {
   background: #fff;
@@ -781,12 +802,14 @@ body.guest-mode .post-meta {
 }
 .detail-hero .cover-stack {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 8px;
 }
 .detail-hero .cover-stack img {
-  width: 140px;
-  height: 200px;
+  width: 160px;
+  height: 220px;
   object-fit: cover;
   border-radius: 12px;
   box-shadow: var(--shadow);
@@ -1282,6 +1305,13 @@ body.guest-mode .post-meta {
     align-items: center;
     text-align: center;
     padding: 18px;
+  }
+  #detail-body {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  #detail-body .detail-hero {
+    position: static;
   }
   .detail-hero .cover-stack {
     flex-direction: row;
