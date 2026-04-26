@@ -516,12 +516,20 @@ app.post('/api/admin/ranking/reset', authRequired, adminRequired, (_req, res) =>
 app.use('/api', (_req, res) => res.status(404).json({ error: 'API not found' }));
 
 // ---------- 정적 파일 ----------
+// 자주 업데이트되는 학급용 SPA: HTML/JS/CSS 모두 매번 ETag 로 검증해
+// 새 배포 직후에도 학생들이 옛 코드에 갇히지 않도록 한다.
+// (이미지/폰트는 max-age 짧게)
 app.use(
   express.static(__dirname, {
     extensions: ['html'],
+    etag: true,
+    lastModified: true,
     setHeaders(res, p) {
-      if (p.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
-      else res.setHeader('Cache-Control', 'public, max-age=300');
+      if (/\.(html|js|css)$/.test(p)) {
+        res.setHeader('Cache-Control', 'no-cache');
+      } else {
+        res.setHeader('Cache-Control', 'public, max-age=600');
+      }
     },
   })
 );
