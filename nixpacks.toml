@@ -1,0 +1,9 @@
+# Railway가 NIXPACKS 빌더를 강제할 때를 대비한 설정.
+# better-sqlite3 네이티브 모듈 컴파일에 필요한 도구를 추가합니다.
+# Node 버전은 .nvmrc(20)로 고정합니다.
+
+[phases.setup]
+nixPkgs = ["python3", "gcc", "gnumake", "pkg-config"]
+
+[start]
+cmd = "node server.js"

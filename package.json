@@ -9,7 +9,7 @@
     "dev": "node server.js"
   },
   "engines": {
-    "node": ">=20 <23"
+    "node": "20.x"
   },
   "dependencies": {
     "better-sqlite3": "^11.3.0",
