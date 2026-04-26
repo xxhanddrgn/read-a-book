@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Jua&family=Nanum+Pen+Script&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Jua&family=Noto+Sans+KR:wght@500;700;900&display=swap"
     rel="stylesheet"
   />
   <link rel="stylesheet" href="styles.css" />
@@ -24,15 +24,39 @@
         <div class="row">
           <label>
             <span>학년</span>
-            <input type="number" name="grade" min="1" max="6" required placeholder="3" />
+            <input
+              type="text"
+              name="grade"
+              inputmode="numeric"
+              pattern="[0-9]+"
+              maxlength="1"
+              required
+              value="6"
+            />
           </label>
           <label>
             <span>반</span>
-            <input type="number" name="classNo" min="1" max="20" required placeholder="2" />
+            <input
+              type="text"
+              name="classNo"
+              inputmode="numeric"
+              pattern="[0-9]+"
+              maxlength="2"
+              required
+              value="1"
+            />
           </label>
           <label>
             <span>번호</span>
-            <input type="number" name="number" min="1" max="40" required placeholder="14" />
+            <input
+              type="text"
+              name="number"
+              inputmode="numeric"
+              pattern="[0-9]+"
+              maxlength="2"
+              required
+              placeholder="번호"
+            />
           </label>
         </div>
         <label class="full">
@@ -73,6 +97,11 @@
       </button>
 
       <div class="user-area">
+        <button id="anon-toggle" class="anon-toggle hidden" title="학생 이름·학년반을 가립니다">
+          <span class="anon-icon">🙈</span>
+          <span class="anon-label">익명 모드</span>
+          <span class="anon-state">꺼짐</span>
+        </button>
         <span id="who-am-i" class="who"></span>
         <button id="logout-btn" class="link-btn">로그아웃</button>
       </div>
@@ -174,14 +203,13 @@
   <!-- ============== 책플루언서 랭킹 모달 ============== -->
   <div id="ranking-modal" class="modal hidden" role="dialog" aria-modal="true">
     <div class="modal-card ranking-card">
-      <div class="modal-head">
-        <h3>👑 우리 반 책플루언서</h3>
-        <button class="modal-close" data-close="ranking-modal">✕</button>
+      <button class="modal-close ranking-close" data-close="ranking-modal">✕</button>
+      <div class="ranking-hero">
+        <div class="ranking-hero-emoji">🏆</div>
+        <h3 class="ranking-hero-title">명예의 전당</h3>
+        <p class="ranking-hero-sub">우리 반 책플루언서 순위</p>
       </div>
-      <p class="ranking-rule">
-        🏆 <b>점수 = 게시글 수 + (댓글 수 ÷ 3)</b><br />
-        댓글 3개를 남기면 게시글 1개를 쓴 점수와 같아져요!
-      </p>
+      <div id="ranking-podium" class="ranking-podium"></div>
       <ol id="ranking-list" class="ranking-list"></ol>
     </div>
   </div>

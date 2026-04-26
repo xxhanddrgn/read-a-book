@@ -27,7 +27,8 @@ html,
 body {
   margin: 0;
   padding: 0;
-  font-family: 'Jua', 'Gaegu', 'Noto Sans KR', sans-serif;
+  font-family: 'Noto Sans KR', 'Jua', sans-serif;
+  font-weight: 500;
   color: var(--ink);
   background: var(--bg);
   background-image: radial-gradient(
@@ -38,6 +39,7 @@ body {
     radial-gradient(circle at 90% 80%, #ffe1d0 0, transparent 35%);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.01em;
 }
 
 button {
@@ -46,12 +48,24 @@ button {
   border: none;
   background: none;
   color: inherit;
+  font-weight: 700;
 }
 
 input,
 textarea {
-  font-family: 'Gaegu', 'Jua', 'Noto Sans KR', sans-serif;
+  font-family: 'Noto Sans KR', 'Jua', sans-serif;
+  font-weight: 500;
   font-size: 1.05rem;
+}
+
+/* number/text 입력의 스피너 화살표 제거 */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
 }
 
 .hidden {
@@ -96,7 +110,7 @@ textarea {
 .login-sub {
   margin: 0 0 18px;
   color: var(--ink-soft);
-  font-family: 'Gaegu', sans-serif;
+  font-family: 'Noto Sans KR', sans-serif; font-weight: 700;
   font-size: 1.15rem;
 }
 
@@ -170,14 +184,14 @@ textarea {
   background: none;
   color: var(--ink-soft);
   text-decoration: underline;
-  font-family: 'Gaegu', sans-serif;
+  font-family: 'Noto Sans KR', sans-serif; font-weight: 700;
   font-size: 1rem;
   margin-top: 14px;
 }
 
 .login-hint {
   margin: 0;
-  font-family: 'Gaegu', sans-serif;
+  font-family: 'Noto Sans KR', sans-serif; font-weight: 700;
   color: var(--ink-soft);
   font-size: 0.95rem;
   text-align: center;
@@ -232,7 +246,7 @@ textarea {
   font-size: 1.2rem;
 }
 .influencer-banner .banner-leader {
-  font-family: 'Gaegu', sans-serif;
+  font-family: 'Noto Sans KR', sans-serif; font-weight: 700;
   font-weight: 700;
   background: #fff;
   padding: 2px 10px;
@@ -245,8 +259,45 @@ textarea {
   align-items: center;
   gap: 10px;
 }
+
+.anon-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #fff;
+  border: 2px solid #ffd591;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-family: 'Jua', sans-serif;
+  font-size: 0.9rem;
+  color: var(--ink);
+  box-shadow: 0 2px 0 #f0b85c;
+  transition: background 0.15s, color 0.15s, transform 0.08s;
+}
+.anon-toggle:hover {
+  transform: translateY(-1px);
+}
+.anon-toggle .anon-state {
+  background: #fff3e0;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-family: 'Noto Sans KR', sans-serif;
+  font-weight: 700;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+.anon-toggle.on {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+  box-shadow: 0 2px 0 #1a1410;
+}
+.anon-toggle.on .anon-state {
+  background: #ffcf6b;
+  color: var(--ink);
+}
 .who {
-  font-family: 'Gaegu', sans-serif;
+  font-family: 'Noto Sans KR', sans-serif; font-weight: 700;
   font-size: 1.05rem;
   color: var(--ink-soft);
 }
@@ -339,7 +390,7 @@ textarea {
   color: var(--ink);
 }
 .ono-card .ono-author {
-  font-family: 'Gaegu', sans-serif;
+  font-family: 'Noto Sans KR', sans-serif; font-weight: 700;
   font-size: 0.9rem;
   color: var(--ink-soft);
 }
@@ -359,7 +410,7 @@ textarea {
   flex: 1;
   text-align: center;
   padding: 30px 10px;
-  font-family: 'Gaegu', sans-serif;
+  font-family: 'Noto Sans KR', sans-serif; font-weight: 700;
   color: var(--ink-soft);
   font-size: 1.1rem;
 }
@@ -418,7 +469,7 @@ textarea {
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
 }
 .post-overlay .p-author {
-  font-family: 'Gaegu', sans-serif;
+  font-family: 'Noto Sans KR', sans-serif; font-weight: 700;
   font-size: 0.88rem;
   opacity: 0.95;
 }
@@ -462,7 +513,7 @@ textarea {
   background: rgba(255, 255, 255, 0.92);
   border-radius: 999px;
   padding: 3px 9px;
-  font-family: 'Gaegu', sans-serif;
+  font-family: 'Noto Sans KR', sans-serif; font-weight: 700;
   font-size: 0.85rem;
   color: var(--ink);
 }
@@ -472,7 +523,7 @@ textarea {
   justify-content: space-between;
   align-items: center;
   padding: 10px 12px;
-  font-family: 'Gaegu', sans-serif;
+  font-family: 'Noto Sans KR', sans-serif; font-weight: 700;
   color: var(--ink-soft);
   font-size: 0.95rem;
   background: #fffaf0;
@@ -488,7 +539,7 @@ textarea {
 .empty-board {
   text-align: center;
   padding: 40px 14px;
-  font-family: 'Gaegu', sans-serif;
+  font-family: 'Noto Sans KR', sans-serif; font-weight: 700;
   color: var(--ink-soft);
   font-size: 1.15rem;
 }
@@ -667,7 +718,7 @@ textarea {
   color: var(--ink);
 }
 .detail-info .by {
-  font-family: 'Gaegu', sans-serif;
+  font-family: 'Noto Sans KR', sans-serif; font-weight: 700;
   color: var(--ink-soft);
   margin: 0 0 10px;
   font-size: 1.05rem;
@@ -676,7 +727,7 @@ textarea {
   display: flex;
   gap: 14px;
   align-items: center;
-  font-family: 'Gaegu', sans-serif;
+  font-family: 'Noto Sans KR', sans-serif; font-weight: 700;
   font-size: 1rem;
   color: var(--ink-soft);
 }
@@ -695,7 +746,7 @@ textarea {
 }
 .detail-body .review,
 .detail-body .question {
-  font-family: 'Gaegu', sans-serif;
+  font-family: 'Noto Sans KR', sans-serif; font-weight: 700;
   font-size: 1.15rem;
   white-space: pre-wrap;
   line-height: 1.5;
@@ -738,7 +789,7 @@ textarea {
   position: relative;
   padding: 14px 12px 14px;
   border-radius: 4px;
-  font-family: 'Gaegu', sans-serif;
+  font-family: 'Noto Sans KR', sans-serif; font-weight: 700;
   color: #2c2418;
   box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.12);
   min-height: 130px;
@@ -777,7 +828,7 @@ textarea {
 
 .empty-wall {
   text-align: center;
-  font-family: 'Gaegu', sans-serif;
+  font-family: 'Noto Sans KR', sans-serif; font-weight: 700;
   color: var(--ink-soft);
   padding: 18px;
 }
@@ -795,7 +846,7 @@ textarea {
   border: 2px solid #ffd591;
   background: #fffefb;
   outline: none;
-  font-family: 'Gaegu', sans-serif;
+  font-family: 'Noto Sans KR', sans-serif; font-weight: 700;
   resize: vertical;
   min-height: 50px;
 }
@@ -838,30 +889,153 @@ textarea {
 .detail-actions .delete-btn {
   margin-left: auto;
   color: #b54;
-  font-family: 'Gaegu', sans-serif;
+  font-family: 'Noto Sans KR', sans-serif; font-weight: 700;
   text-decoration: underline;
   background: none;
 }
 
-/* ===================== 랭킹 ===================== */
+/* ===================== 명예의 전당 ===================== */
 .ranking-card {
-  max-width: 460px;
+  max-width: 520px;
+  padding: 0;
+  overflow: hidden;
 }
-.ranking-rule {
-  background: #fff8d9;
-  border-radius: 12px;
-  padding: 10px 12px;
-  font-family: 'Gaegu', sans-serif;
+.ranking-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 5;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.ranking-hero {
+  background: linear-gradient(135deg, #ffb86b, #ff8a4c 60%, #ff6b9d);
+  color: #fff;
+  text-align: center;
+  padding: 24px 18px 22px;
+}
+.ranking-hero-emoji {
+  font-size: 3rem;
+  line-height: 1;
+  margin-bottom: 4px;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.18));
+}
+.ranking-hero-title {
+  font-family: 'Black Han Sans', 'Jua', sans-serif;
+  font-size: 1.9rem;
+  margin: 4px 0 2px;
+  letter-spacing: 2px;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+.ranking-hero-sub {
+  margin: 0;
+  font-family: 'Noto Sans KR', sans-serif;
+  font-weight: 500;
+  font-size: 0.95rem;
+  opacity: 0.95;
+}
+
+.ranking-podium {
+  display: grid;
+  grid-template-columns: 1fr 1.15fr 1fr;
+  gap: 10px;
+  align-items: end;
+  padding: 22px 16px 14px;
+  background: linear-gradient(180deg, #fff8e1, #fff3c4);
+}
+.podium-spot {
+  background: #fff;
+  border-radius: 16px;
+  padding: 14px 8px 12px;
+  text-align: center;
+  border: 2px solid #ffd591;
+  box-shadow: 0 4px 0 #f0b85c;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-height: 130px;
+}
+.podium-spot.empty {
+  opacity: 0.45;
+  background: #fffaf0;
+}
+.podium-spot.rank-1 {
+  background: linear-gradient(180deg, #fff5b8, #ffd966);
+  border-color: #ffb800;
+  box-shadow: 0 6px 0 #d39a2c;
+  transform: translateY(-14px);
+  padding-top: 18px;
+  min-height: 160px;
+}
+.podium-spot.rank-2 {
+  background: linear-gradient(180deg, #fafafa, #d8d8d8);
+  border-color: #b8b8b8;
+  box-shadow: 0 4px 0 #999;
+}
+.podium-spot.rank-3 {
+  background: linear-gradient(180deg, #ffe0c8, #f7b88a);
+  border-color: #d68a52;
+  box-shadow: 0 4px 0 #b86d36;
+}
+.podium-medal {
+  font-size: 2rem;
+  line-height: 1;
+}
+.podium-spot.rank-1 .podium-medal {
+  font-size: 2.4rem;
+}
+.podium-name {
+  font-family: 'Jua', 'Noto Sans KR', sans-serif;
+  font-size: 1.1rem;
   color: var(--ink);
-  margin: 4px 0 14px;
+  margin-top: 2px;
+  word-break: keep-all;
 }
+.podium-spot.rank-1 .podium-name {
+  font-size: 1.25rem;
+}
+.podium-stats {
+  font-family: 'Noto Sans KR', sans-serif;
+  font-weight: 500;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  line-height: 1.3;
+}
+.podium-empty-block {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 20px 12px;
+  font-family: 'Noto Sans KR', sans-serif;
+}
+.podium-empty-icon {
+  font-size: 3rem;
+  filter: grayscale(0.3);
+}
+.podium-empty-msg {
+  font-family: 'Jua', sans-serif;
+  font-size: 1.1rem;
+  margin-top: 6px;
+  color: var(--ink);
+}
+.podium-empty-sub {
+  font-weight: 500;
+  color: var(--ink-soft);
+  margin-top: 2px;
+  font-size: 0.95rem;
+}
+
 .ranking-list {
   list-style: none;
-  padding: 0;
+  padding: 12px 16px 22px;
   margin: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  background: #fff;
+}
+.ranking-list:empty {
+  padding: 0;
 }
 .ranking-list li {
   background: #fffaf0;
@@ -869,27 +1043,32 @@ textarea {
   padding: 10px 14px;
   border-radius: 12px;
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 10px;
   font-family: 'Jua', sans-serif;
 }
 .ranking-list li .rank-num {
-  font-size: 1.4rem;
-  margin-right: 8px;
+  font-size: 1.1rem;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border-radius: 999px;
+  border: 2px solid #ffd591;
+  flex-shrink: 0;
 }
-.ranking-list li .rank-score {
-  font-family: 'Gaegu', sans-serif;
-  color: var(--primary);
+.ranking-list li .rank-name {
+  flex: 1;
+  font-family: 'Jua', sans-serif;
+  color: var(--ink);
 }
-.ranking-list li:nth-child(1) {
-  background: linear-gradient(135deg, #fff2c2, #ffe09a);
-  border-color: #ffcf6b;
-}
-.ranking-list li:nth-child(2) {
-  background: #f4f4f4;
-}
-.ranking-list li:nth-child(3) {
-  background: #fde2cf;
+.ranking-list li .rank-stats {
+  font-family: 'Noto Sans KR', sans-serif;
+  font-weight: 500;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
 }
 
 /* ===================== 토스트 ===================== */
@@ -927,6 +1106,15 @@ textarea {
   }
   .user-area {
     justify-self: end;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .anon-toggle {
+    padding: 4px 9px;
+    font-size: 0.78rem;
+  }
+  .anon-toggle .anon-label {
+    display: none;
   }
 
   .main-area {
@@ -1009,5 +1197,42 @@ textarea {
   }
   .login-title {
     font-size: 2rem;
+  }
+
+  .ranking-hero {
+    padding: 20px 14px 18px;
+  }
+  .ranking-hero-title {
+    font-size: 1.6rem;
+  }
+  .ranking-podium {
+    padding: 18px 10px 10px;
+    gap: 6px;
+  }
+  .podium-spot {
+    padding: 10px 4px;
+    min-height: 110px;
+  }
+  .podium-spot.rank-1 {
+    min-height: 130px;
+    padding-top: 14px;
+  }
+  .podium-name {
+    font-size: 0.95rem;
+  }
+  .podium-spot.rank-1 .podium-name {
+    font-size: 1.05rem;
+  }
+  .podium-stats {
+    font-size: 0.75rem;
+  }
+  .podium-medal {
+    font-size: 1.7rem;
+  }
+  .podium-spot.rank-1 .podium-medal {
+    font-size: 2rem;
+  }
+  .ranking-list {
+    padding: 10px 12px 18px;
   }
 }

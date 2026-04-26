@@ -6,6 +6,7 @@
   'use strict';
 
   const SESSION_KEY = 'wb_session_v2';
+  const ANON_KEY = 'wb_anon_mode';
   const POLL_MS = 8000;
 
   // -------- 상태 --------
@@ -13,6 +14,8 @@
   let state = { teacherPosts: [], studentPosts: [] };
   let currentDetailId = null;
   let pollTimer = null;
+  let anonMode = localStorage.getItem(ANON_KEY) === '1';
+  const aliasMap = new Map(); // authorKey → '학생 N'
 
   // -------- 유틸 --------
   const $ = (s) => document.querySelector(s);
@@ -30,6 +33,59 @@
 
   const userLabel = (u) =>
     u.isTeacher ? `👩‍🏫 ${u.name} 선생님` : `${u.grade}-${u.classNo} ${u.number}번 ${u.name}`;
+
+  // -------- 익명 모드 (교사 전용) --------
+  const showAnon = () => !!session?.user?.isTeacher && anonMode;
+
+  const buildAliasMap = () => {
+    aliasMap.clear();
+    const seen = new Set();
+    state.studentPosts.forEach((p) => {
+      if (!p.authorInfo.isTeacher) seen.add(p.authorInfo.key);
+      p.comments.forEach((c) => {
+        if (!c.isTeacher) seen.add(c.authorKey);
+      });
+    });
+    state.teacherPosts.forEach((p) => {
+      p.comments.forEach((c) => {
+        if (!c.isTeacher) seen.add(c.authorKey);
+      });
+    });
+    Array.from(seen)
+      .sort()
+      .forEach((k, i) => aliasMap.set(k, `학생 ${i + 1}`));
+  };
+
+  // info 형태: { key, name, isTeacher } 또는 { authorKey, authorName, isTeacher }
+  const personDisplay = (info) => {
+    const key = info.key ?? info.authorKey;
+    const name = info.name ?? info.authorName;
+    const isTeacher = !!info.isTeacher;
+    if (isTeacher) return name;
+    if (showAnon()) return aliasMap.get(key) || '익명 학생';
+    return name;
+  };
+
+  const updateAnonButton = () => {
+    const btn = $('#anon-toggle');
+    const isTeacher = !!session?.user?.isTeacher;
+    btn.classList.toggle('hidden', !isTeacher);
+    btn.classList.toggle('on', anonMode);
+    btn.querySelector('.anon-icon').textContent = anonMode ? '🙉' : '🙈';
+    btn.querySelector('.anon-state').textContent = anonMode ? '켜짐' : '꺼짐';
+  };
+
+  const toggleAnonMode = () => {
+    anonMode = !anonMode;
+    localStorage.setItem(ANON_KEY, anonMode ? '1' : '0');
+    updateAnonButton();
+    // 모든 화면 다시 그리기
+    renderTeacherPosts();
+    renderBoard();
+    renderInfluencerBanner();
+    if (currentDetailId) renderDetail(currentDetailId);
+    toast(anonMode ? '익명 모드 ON — 학생 정보를 가립니다 🙉' : '익명 모드 OFF — 학생 정보가 다시 보여요 🙈');
+  };
 
   const toast = (msg, ms = 1800) => {
     const el = $('#toast');
@@ -214,6 +270,7 @@
     if (!session) return;
     try {
       state = await api('GET', '/api/state');
+      buildAliasMap();
       renderTeacherPosts();
       renderBoard();
       renderInfluencerBanner();
@@ -338,6 +395,7 @@
     if (!session) return;
     $('#who-am-i').textContent = userLabel(session.user);
     $('#add-teacher-post-btn').classList.toggle('hidden', !session.user.isTeacher);
+    updateAnonButton();
   };
 
   const findPost = (id) =>
@@ -384,7 +442,7 @@
         <article class="post-card" data-id="${p.id}">
           <div class="post-square">
             <img src="${p.images[0]}" alt="${escapeHtml(p.title)}" />
-            <span class="author-tag">${escapeHtml(p.authorInfo.name)}</span>
+            <span class="author-tag">${escapeHtml(personDisplay(p.authorInfo))}</span>
             <button class="like-btn ${liked ? 'liked' : ''}" data-like="${p.id}" aria-label="좋아요">
               <span>${liked ? '❤️' : '🤍'}</span>
               <span>${p.likes.length}</span>
@@ -450,11 +508,12 @@
             const color = POSTIT_COLORS[i % POSTIT_COLORS.length];
             const tilt = ((i * 37) % 7) - 3;
             const canDelete = c.authorKey === me || session.user.isTeacher;
+            const cName = personDisplay(c);
             return `
             <div class="postit" style="background:${color}; --tilt:${tilt}deg;">
               <div class="pt-text">${escapeHtml(c.text)}</div>
               <div class="pt-by">
-                ${c.isTeacher ? '👩‍🏫 ' : '🌱 '}${escapeHtml(c.authorName)}
+                ${c.isTeacher ? '👩‍🏫 ' : '🌱 '}${escapeHtml(cName)}
                 ${canDelete ? `<button class="link-btn" data-del-c="${c.id}" style="margin-left:6px;">지우기</button>` : ''}
               </div>
             </div>`;
@@ -462,6 +521,7 @@
           .join('')
       : '<div class="empty-wall">아직 댓글이 없어요. 첫 포스트잇을 붙여볼까요? 💛</div>';
 
+    const authorDisplay = personDisplay(post.authorInfo);
     $('#detail-body').innerHTML = `
       <div class="detail-hero">
         <div class="cover-stack">${covers}</div>
@@ -469,7 +529,7 @@
           <h2>${escapeHtml(post.title)}</h2>
           <p class="by">✏ ${escapeHtml(post.author)} · 올린이: ${
       post.authorInfo.isTeacher ? '👩‍🏫 ' : ''
-    }${escapeHtml(post.authorInfo.name)}</p>
+    }${escapeHtml(authorDisplay)}</p>
           <div class="stats">
             <span class="like-stat">❤ ${post.likes.length}</span>
             <span>💬 ${post.comments.length}</span>
@@ -484,7 +544,7 @@
       </div>
 
       <div class="detail-body">
-        <h3>📝 ${escapeHtml(post.authorInfo.name)} 친구의 소감</h3>
+        <h3>📝 ${escapeHtml(authorDisplay)} 친구의 소감</h3>
         <div class="review">${escapeHtml(post.review)}</div>
 
         <h3>💭 함께 생각해볼 질문</h3>
@@ -531,7 +591,7 @@
       );
   };
 
-  // -------- 책플루언서 --------
+  // -------- 책플루언서 (명예의 전당) --------
   const computeRanking = () => {
     const map = new Map();
     const bump = (k, name, isTeacher, dPosts, dComments) => {
@@ -552,36 +612,73 @@
         bump(c.authorKey, c.authorName, c.isTeacher, 0, 1)
       );
     });
-    const list = Array.from(map.values()).map((o) => ({
-      ...o,
-      score: o.posts + o.comments / 3,
-    }));
-    list.sort((a, b) => b.score - a.score || b.posts - a.posts);
+    // 게시글 수 우선, 동률이면 댓글 수, 그래도 동률이면 이름
+    const list = Array.from(map.values());
+    list.sort(
+      (a, b) =>
+        b.posts - a.posts ||
+        b.comments - a.comments ||
+        a.name.localeCompare(b.name, 'ko')
+    );
     return list;
   };
 
   const renderInfluencerBanner = () => {
     const leader = computeRanking()[0];
     $('#banner-leader').textContent = leader
-      ? `${leader.name} (${leader.score.toFixed(1)}점)`
+      ? personDisplay({ key: leader.key, name: leader.name, isTeacher: false })
       : '아직 없음';
   };
 
+  const MEDAL = { 1: '🥇', 2: '🥈', 3: '🥉' };
+  const podiumSpot = (rank, item) => {
+    if (!item) {
+      return `
+        <div class="podium-spot empty rank-${rank}">
+          <div class="podium-medal">${MEDAL[rank]}</div>
+          <div class="podium-name">-</div>
+          <div class="podium-stats">아직 없음</div>
+        </div>`;
+    }
+    const name = personDisplay({ key: item.key, name: item.name, isTeacher: false });
+    return `
+      <div class="podium-spot rank-${rank}">
+        <div class="podium-medal">${MEDAL[rank]}</div>
+        <div class="podium-name">${escapeHtml(name)}</div>
+        <div class="podium-stats">글 ${item.posts}개<br/>댓글 ${item.comments}개</div>
+      </div>`;
+  };
+
   const renderRanking = () => {
-    const list = computeRanking().slice(0, 10);
+    const list = computeRanking();
+    const podium = $('#ranking-podium');
     const ol = $('#ranking-list');
+
     if (!list.length) {
-      ol.innerHTML = '<li>아직 게시글이 없어요. 첫 글을 올려보세요!</li>';
+      podium.innerHTML = `
+        <div class="podium-empty-block">
+          <div class="podium-empty-icon">🏆</div>
+          <div class="podium-empty-msg">아직 순위가 없어요</div>
+          <div class="podium-empty-sub">첫 게시글의 주인공이 되어보세요!</div>
+        </div>`;
+      ol.innerHTML = '';
       return;
     }
-    const medals = ['🥇', '🥈', '🥉'];
-    ol.innerHTML = list
+
+    // 단상은 2위 - 1위 - 3위 순서로 배치
+    podium.innerHTML =
+      podiumSpot(2, list[1]) + podiumSpot(1, list[0]) + podiumSpot(3, list[2]);
+
+    const rest = list.slice(3, 20);
+    ol.innerHTML = rest
       .map((o, i) => {
-        const num = medals[i] || `${i + 1}.`;
-        return `<li>
-            <span><span class="rank-num">${num}</span> ${escapeHtml(o.name)}</span>
-            <span class="rank-score">${o.score.toFixed(1)}점 · 글 ${o.posts}개 · 댓글 ${o.comments}개</span>
-          </li>`;
+        const name = personDisplay({ key: o.key, name: o.name, isTeacher: false });
+        return `
+        <li>
+          <span class="rank-num">${i + 4}</span>
+          <span class="rank-name">${escapeHtml(name)}</span>
+          <span class="rank-stats">글 ${o.posts}개 · 댓글 ${o.comments}개</span>
+        </li>`;
       })
       .join('');
   };
@@ -601,6 +698,7 @@
       renderRanking();
       openModal('ranking-modal');
     });
+    $('#anon-toggle').addEventListener('click', toggleAnonMode);
 
     document.addEventListener('click', (e) => {
       const t = e.target.closest('[data-close]');
