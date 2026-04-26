@@ -281,8 +281,12 @@ app.post('/api/posts', authRequired, blockGuest, (req, res) => {
       return res.status(400).json({ error: '책 표지 이미지를 1장 이상 올려주세요.' });
     }
     if (images.length > 4) images.length = 4;
-    if (!title?.trim() || !author?.trim() || !review?.trim() || !question?.trim()) {
+    if (!title?.trim() || !author?.trim() || !review?.trim()) {
       return res.status(400).json({ error: '필수 항목을 모두 입력해주세요.' });
+    }
+    // 학생 게시글에서만 질문이 필수, 교사 게시글은 질문 없이도 허용
+    if (t === 'student' && !question?.trim()) {
+      return res.status(400).json({ error: '책에 대한 질문을 입력해주세요.' });
     }
     const id = uid();
     db.prepare(

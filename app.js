@@ -87,7 +87,6 @@
     // 모든 화면 다시 그리기
     renderTeacherPosts();
     renderBoard();
-    renderInfluencerBanner();
     if (currentDetailId) renderDetail(currentDetailId);
     toast(anonMode ? '익명 모드 ON — 학생 정보를 가립니다 🙉' : '익명 모드 OFF — 학생 정보가 다시 보여요 🙈');
   };
@@ -168,20 +167,48 @@
     });
 
   // -------- 화면 전환 --------
+  const ALL_SCREENS = ['#login-screen', '#app-screen', '#detail-screen', '#ranking-screen'];
+  const showOnly = (id) => {
+    ALL_SCREENS.forEach((s) =>
+      $(s).classList.toggle('hidden', s !== id)
+    );
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  };
+
   const showLogin = () => {
     stopPolling();
     document.body.classList.remove('guest-mode');
     $('#guest-banner')?.classList.add('hidden');
-    $('#login-screen').classList.remove('hidden');
-    $('#app-screen').classList.add('hidden');
+    showOnly('#login-screen');
+    currentDetailId = null;
   };
   const showApp = async () => {
-    $('#login-screen').classList.add('hidden');
-    $('#app-screen').classList.remove('hidden');
+    showOnly('#app-screen');
+    currentDetailId = null;
     applyGuestMode();
     renderUserArea();
     await refreshState();
     startPolling();
+  };
+  const showDetailScreen = (id) => {
+    currentDetailId = id;
+    detailTab = 'review';
+    const post = findPost(id);
+    const titleEl = $('#detail-screen .page-topbar-title');
+    if (titleEl) {
+      titleEl.textContent =
+        post && post.target === 'teacher' ? '📖 우리 반 온 책 읽기' : '📖 책 이야기';
+    }
+    renderDetail(id);
+    showOnly('#detail-screen');
+  };
+  const showRankingScreen = () => {
+    renderRanking();
+    showOnly('#ranking-screen');
+  };
+  const backToApp = () => {
+    currentDetailId = null;
+    showOnly('#app-screen');
   };
 
   // -------- 로그인 / 로그아웃 --------
@@ -299,7 +326,6 @@
       buildAliasMap();
       renderTeacherPosts();
       renderBoard();
-      renderInfluencerBanner();
       if (currentDetailId) renderDetail(currentDetailId);
     } catch (err) {
       // 401이면 위에서 이미 로그인 화면으로 보냄
@@ -332,11 +358,29 @@
   const openNewPost = (forTeacher = false) => {
     pendingCovers = [];
     $('#cover-preview').innerHTML = '';
-    $('#new-post-form').reset();
+    const form = $('#new-post-form');
+    form.reset();
     $('#new-post-title').textContent = forTeacher
       ? '📖 우리 반 온 책 읽기 등록'
       : '📕 새 책 올리기';
-    $('#new-post-form').dataset.target = forTeacher ? 'teacher' : 'student';
+    form.dataset.target = forTeacher ? 'teacher' : 'student';
+
+    // 교사/학생에 따라 필수 입력란을 토글
+    form.querySelectorAll('.student-only').forEach((el) => {
+      el.classList.toggle('hidden', forTeacher);
+      el.querySelectorAll('textarea, input').forEach((i) => {
+        i.required = !forTeacher;
+        if (forTeacher) i.value = '';
+      });
+    });
+    form.querySelectorAll('.teacher-only').forEach((el) => {
+      el.classList.toggle('hidden', !forTeacher);
+      el.querySelectorAll('textarea, input').forEach((i) => {
+        i.required = forTeacher;
+        if (!forTeacher) i.value = '';
+      });
+    });
+
     openModal('new-post-modal');
   };
 
@@ -351,14 +395,20 @@
     const submitBtn = e.target.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
     try {
-      await api('POST', '/api/posts', {
+      const payload = {
         target,
-        title: String(fd.get('title')).trim(),
-        author: String(fd.get('author')).trim(),
-        review: String(fd.get('review')).trim(),
-        question: String(fd.get('question')).trim(),
+        title: String(fd.get('title') || '').trim(),
+        author: String(fd.get('author') || '').trim(),
         images: pendingCovers,
-      });
+      };
+      if (target === 'teacher') {
+        payload.review = String(fd.get('teacherMessage') || '').trim();
+        payload.question = ''; // 교사 게시글은 질문 없음
+      } else {
+        payload.review = String(fd.get('review') || '').trim();
+        payload.question = String(fd.get('question') || '').trim();
+      }
+      await api('POST', '/api/posts', payload);
       closeModal('new-post-modal');
       toast('게시글이 올라갔어요! 📮');
       await refreshState();
@@ -407,8 +457,7 @@
     if (!confirm('이 게시글을 정말 지울까요?')) return;
     try {
       await api('DELETE', `/api/posts/${postId}`);
-      closeModal('detail-modal');
-      currentDetailId = null;
+      backToApp();
       toast('게시글을 지웠어요.');
       await refreshState();
     } catch (err) {
@@ -464,19 +513,13 @@
       return;
     }
     empty.classList.add('hidden');
-    const me = userKey(session.user);
     grid.innerHTML = state.studentPosts
-      .map((p) => {
-        const liked = p.likes.includes(me);
-        return `
+      .map(
+        (p) => `
         <article class="post-card" data-id="${p.id}">
           <div class="post-square">
             <img src="${p.images[0]}" alt="${escapeHtml(p.title)}" />
             <span class="author-tag">${escapeHtml(personDisplay(p.authorInfo))}</span>
-            <button class="like-btn ${liked ? 'liked' : ''}" data-like="${p.id}" aria-label="좋아요">
-              <span>${liked ? '❤️' : '🤍'}</span>
-              <span>${p.likes.length}</span>
-            </button>
             <div class="post-overlay">
               <h3 class="p-title">${escapeHtml(p.title)}</h3>
               <div class="p-author">✏ ${escapeHtml(p.author)}</div>
@@ -486,23 +529,12 @@
             <span class="meta-likes">❤ ${p.likes.length}</span>
             <span class="meta-comments">💬 ${p.comments.length}</span>
           </div>
-        </article>`;
-      })
+        </article>`
+      )
       .join('');
 
     grid.querySelectorAll('.post-card').forEach((card) => {
-      card.addEventListener('click', (e) => {
-        if (e.target.closest('[data-like]')) return;
-        openDetail(card.dataset.id);
-      });
-    });
-    grid.querySelectorAll('[data-like]').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        btn.classList.add('bump');
-        setTimeout(() => btn.classList.remove('bump'), 300);
-        toggleLike(btn.dataset.like);
-      });
+      card.addEventListener('click', () => openDetail(card.dataset.id));
     });
   };
 
@@ -515,12 +547,7 @@
     'var(--postit-purple)',
   ];
 
-  const openDetail = (id) => {
-    currentDetailId = id;
-    detailTab = 'review'; // 교사 게시글이면 기본은 소감 탭
-    renderDetail(id);
-    openModal('detail-modal');
-  };
+  const openDetail = (id) => showDetailScreen(id);
 
   const renderPostit = (c, i, me) => {
     const color = POSTIT_COLORS[i % POSTIT_COLORS.length];
@@ -579,11 +606,8 @@
 
       bodySection = `
         <div class="detail-body">
-          <h3>📚 선생님의 소개</h3>
-          <div class="review">${escapeHtml(post.review)}</div>
-
-          <h3>💭 선생님의 질문</h3>
-          <div class="question-box"><div class="question">${escapeHtml(post.question)}</div></div>
+          <h3>📢 선생님 말씀</h3>
+          <div class="question-box"><div class="review">${escapeHtml(post.review)}</div></div>
 
           <div class="onm-tabs" role="tablist">
             <button class="onm-tab ${activeIsReview ? 'active' : ''}" data-tab="review" role="tab">
@@ -723,13 +747,6 @@
     return list;
   };
 
-  const renderInfluencerBanner = () => {
-    const leader = computeRanking()[0];
-    $('#banner-leader').textContent = leader
-      ? personDisplay({ key: leader.key, name: leader.name, isTeacher: false })
-      : '아직 없음';
-  };
-
   const MEDAL = { 1: '🥇', 2: '🥈', 3: '🥉' };
   const podiumSpot = (rank, item) => {
     if (!item) {
@@ -796,15 +813,15 @@
     $('#cover-input').addEventListener('change', onCoverChange);
     $('#new-post-form').addEventListener('submit', onSubmitPost);
 
-    $('#influencer-banner').addEventListener('click', () => {
-      renderRanking();
-      openModal('ranking-modal');
-    });
+    $('#influencer-banner').addEventListener('click', () => showRankingScreen());
     $('#anon-toggle').addEventListener('click', toggleAnonMode);
 
+    // 모달 닫기 (새 글 작성 모달은 그대로 모달 사용)
     document.addEventListener('click', (e) => {
       const t = e.target.closest('[data-close]');
       if (t) closeModal(t.dataset.close);
+      const back = e.target.closest('[data-back]');
+      if (back) backToApp();
     });
     $$('.modal').forEach((m) =>
       m.addEventListener('click', (e) => {
@@ -812,7 +829,20 @@
       })
     );
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') $$('.modal').forEach((m) => m.classList.add('hidden'));
+      if (e.key !== 'Escape') return;
+      // 1순위: 열린 모달이 있으면 모달부터 닫기
+      const openedModal = $$('.modal').find((m) => !m.classList.contains('hidden'));
+      if (openedModal) {
+        openedModal.classList.add('hidden');
+        return;
+      }
+      // 2순위: 상세/랭킹 페이지면 앱 화면으로 복귀
+      if (
+        !$('#detail-screen').classList.contains('hidden') ||
+        !$('#ranking-screen').classList.contains('hidden')
+      ) {
+        backToApp();
+      }
     });
   };
 

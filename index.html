@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Jua&family=Noto+Sans+KR:wght@500;700;900&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&display=swap"
     rel="stylesheet"
   />
   <link rel="stylesheet" href="styles.css" />
@@ -94,7 +94,6 @@
       <button id="influencer-banner" class="influencer-banner" title="우리 반 책플루언서 보기">
         <span class="crown">👑</span>
         <span class="banner-label">우리 반 책플루언서</span>
-        <span class="banner-leader" id="banner-leader">아직 없음</span>
       </button>
 
       <div class="user-area">
@@ -170,24 +169,31 @@
             placeholder="예) 생텍쥐페리"
           />
         </label>
-        <label class="full">
+        <label class="full student-only">
           <span>책을 읽고 난 소감 <em>(필수)</em></span>
           <textarea
             name="review"
-            required
             rows="5"
             maxlength="800"
             placeholder="이 책을 읽고 어떤 생각이 들었나요?"
           ></textarea>
         </label>
-        <label class="full">
+        <label class="full student-only">
           <span>책에 대한 질문 <em>(필수, 1개)</em></span>
           <textarea
             name="question"
-            required
             rows="2"
             maxlength="200"
             placeholder="친구들과 함께 이야기 나누고 싶은 질문을 적어보세요!"
+          ></textarea>
+        </label>
+        <label class="full teacher-only hidden">
+          <span>📢 선생님 말씀 <em>(필수)</em></span>
+          <textarea
+            name="teacherMessage"
+            rows="5"
+            maxlength="800"
+            placeholder="학생들에게 전하고 싶은 말씀을 적어주세요. (책 안내, 읽기 일정, 함께 생각해볼 점 등)"
           ></textarea>
         </label>
         <div class="form-actions">
@@ -198,27 +204,34 @@
     </div>
   </div>
 
-  <!-- ============== 게시글 상세 모달 ============== -->
-  <div id="detail-modal" class="modal hidden" role="dialog" aria-modal="true">
-    <div class="modal-card detail-card">
-      <button class="modal-close detail-close" data-close="detail-modal">✕</button>
+  <!-- ============== 게시글 상세 (전체 페이지) ============== -->
+  <section id="detail-screen" class="screen page hidden">
+    <header class="page-topbar">
+      <button class="back-btn" data-back="detail">← 돌아가기</button>
+      <span class="page-topbar-title">📖 책 이야기</span>
+      <span class="page-topbar-spacer"></span>
+    </header>
+    <div class="page-body">
       <div id="detail-body"></div>
     </div>
-  </div>
+  </section>
 
-  <!-- ============== 책플루언서 랭킹 모달 ============== -->
-  <div id="ranking-modal" class="modal hidden" role="dialog" aria-modal="true">
-    <div class="modal-card ranking-card">
-      <button class="modal-close ranking-close" data-close="ranking-modal">✕</button>
+  <!-- ============== 책플루언서 랭킹 (전체 페이지) ============== -->
+  <section id="ranking-screen" class="screen page hidden">
+    <header class="page-topbar ranking-topbar">
+      <button class="back-btn" data-back="ranking">← 돌아가기</button>
+      <span class="page-topbar-title">👑 우리 반 책플루언서</span>
+      <span class="page-topbar-spacer"></span>
+    </header>
+    <div class="page-body">
       <div class="ranking-hero">
         <div class="ranking-hero-emoji">🏆</div>
-        <h3 class="ranking-hero-title">명예의 전당</h3>
-        <p class="ranking-hero-sub">우리 반 책플루언서 순위</p>
+        <h2 class="ranking-hero-title">우리 반 책플루언서</h2>
       </div>
       <div id="ranking-podium" class="ranking-podium"></div>
       <ol id="ranking-list" class="ranking-list"></ol>
     </div>
-  </div>
+  </section>
 
   <!-- ============== 토스트 ============== -->
   <div id="toast" class="toast hidden"></div>
