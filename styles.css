@@ -1526,3 +1526,258 @@ body.guest-mode .post-meta {
   .admin-user-row { flex-direction: column; align-items: stretch; }
   .admin-user-actions { justify-content: flex-end; }
 }
+
+/* ===================== 독서 티어 ===================== */
+/* 학생 이름 옆에 붙는 작은 티어 배지 */
+.tier-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #fff;
+  border: 1px solid #ffd591;
+  border-radius: 999px;
+  padding: 1px 9px 1px 7px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--ink);
+  vertical-align: middle;
+  margin-left: 4px;
+  white-space: nowrap;
+}
+.tier-badge .tb-emoji { font-size: 0.92rem; }
+.tier-badge .tb-name { font-size: 0.78rem; }
+
+.tier-badge.tier-iron        { background:#e2e5e9; color:#5b636e; border-color:#c8ccd3; }
+.tier-badge.tier-bronze      { background:#f5d9b9; color:#7a4a18; border-color:#dab287; }
+.tier-badge.tier-silver      { background:#e3e3e3; color:#555; border-color:#c8c8c8; }
+.tier-badge.tier-gold        { background:#fff1b6; color:#7a5b00; border-color:#ffd966; }
+.tier-badge.tier-platinum    { background:#cdf3fb; color:#236b7a; border-color:#9ddfee; }
+.tier-badge.tier-emerald     { background:#c8f1d8; color:#136d44; border-color:#85d6a6; }
+.tier-badge.tier-diamond     { background:#cde6f9; color:#125383; border-color:#8fc4ed; }
+.tier-badge.tier-master      { background:#e7d1f6; color:#5d2685; border-color:#c69be8; }
+.tier-badge.tier-grandmaster { background:#ffd0d8; color:#82243a; border-color:#f29bac; }
+.tier-badge.tier-challenger  {
+  background: linear-gradient(135deg, #ff7f4f, #ff3838);
+  color: #fff;
+  border-color: #d22020;
+  box-shadow: 0 1px 3px rgba(220, 50, 30, 0.3);
+}
+
+/* 카드 author-tag 안의 배지는 살짝 더 작게 */
+.author-tag .tier-badge {
+  font-size: 0.72rem;
+  padding: 1px 7px 1px 5px;
+}
+.author-tag .tier-badge .tb-name { font-size: 0.72rem; }
+
+/* 포스트잇 안의 배지 */
+.pt-by .tier-badge {
+  font-size: 0.72rem;
+  padding: 0 7px;
+}
+
+/* 상단바 내 본인 티어 — 약간 강조 */
+.who .tier-badge {
+  font-size: 0.85rem;
+  padding: 2px 10px 2px 8px;
+}
+
+/* 상단바 내 티어 진입 버튼 */
+.tier-btn {
+  background: linear-gradient(135deg, #ffd966, #ffb27a);
+  color: #5a3a00;
+  padding: 7px 13px;
+  border-radius: 999px;
+  font-family: 'Gowun Dodum', sans-serif;
+  font-size: 0.92rem;
+  box-shadow: 0 3px 0 #d39a2c;
+  transition: transform 0.08s;
+  border: 2px solid #ffcf6b;
+}
+.tier-btn:hover { transform: translateY(-1px); }
+.tier-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #d39a2c; }
+
+/* ----- 티어 화면 ----- */
+.tier-my-card {
+  margin-bottom: 22px;
+}
+.my-tier-hero {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 22px 24px;
+  border-radius: 20px;
+  background: var(--tier-bg, #fff8e1);
+  color: var(--tier-color, var(--ink));
+  border: 3px solid var(--tier-color, #ffd591);
+  box-shadow: var(--shadow);
+}
+.my-tier-hero.non-student {
+  background: #fff3e0;
+  color: var(--ink);
+  border-color: #ffd591;
+}
+.my-tier-emoji {
+  font-size: 3.2rem;
+  line-height: 1;
+}
+.my-tier-text { flex: 1; min-width: 0; }
+.my-tier-label {
+  font-size: 0.95rem;
+  opacity: 0.85;
+  margin-bottom: 2px;
+}
+.my-tier-name {
+  font-size: 1.7rem;
+  letter-spacing: 1px;
+}
+.my-tier-score {
+  margin-top: 4px;
+  font-size: 1.05rem;
+  opacity: 0.9;
+}
+.my-tier-sub {
+  margin-top: 4px;
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+}
+
+.my-tier-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 12px;
+}
+.my-stat {
+  background: #fff;
+  border: 2px dashed #ffd591;
+  border-radius: 14px;
+  padding: 12px;
+  text-align: center;
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+}
+.my-stat b {
+  display: block;
+  font-size: 1.4rem;
+  color: var(--ink);
+  margin-bottom: 2px;
+}
+
+.my-tier-progress {
+  background: #fff;
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-top: 12px;
+  box-shadow: var(--shadow);
+}
+.my-tier-progress.max {
+  text-align: center;
+  background: linear-gradient(135deg, #fff5b8, #ffd0d8);
+  color: #7a3a3a;
+  font-size: 1.05rem;
+  padding: 18px;
+}
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 0.95rem;
+  color: var(--ink);
+}
+.progress-remaining {
+  color: var(--primary);
+}
+.progress-bar {
+  height: 12px;
+  background: #fff3e0;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid #ffd591;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.tier-table-heading {
+  margin: 6px 0 4px;
+  color: var(--primary);
+  font-size: 1.15rem;
+}
+.tier-table-sub {
+  margin: 0 0 14px;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+}
+.tier-table {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tier-row {
+  display: grid;
+  grid-template-columns: 50px 160px 130px 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--tier-bg, #fff);
+  color: var(--tier-color, var(--ink));
+  border: 2px solid transparent;
+  transition: transform 0.08s;
+}
+.tier-row.mine {
+  border-color: var(--primary);
+  box-shadow: 0 4px 12px rgba(255, 138, 76, 0.25);
+  transform: scale(1.01);
+}
+.tier-row-emoji {
+  font-size: 1.7rem;
+  text-align: center;
+}
+.tier-row-name {
+  font-size: 1.1rem;
+}
+.mine-tag {
+  background: var(--primary);
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 9px;
+  font-size: 0.78rem;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.tier-row-range {
+  font-size: 0.95rem;
+  opacity: 0.85;
+}
+.tier-row-example {
+  font-size: 0.92rem;
+  opacity: 0.85;
+  line-height: 1.5;
+}
+
+@media (max-width: 768px) {
+  .my-tier-hero { padding: 18px; gap: 12px; }
+  .my-tier-emoji { font-size: 2.5rem; }
+  .my-tier-name { font-size: 1.4rem; }
+  .my-tier-stats { grid-template-columns: 1fr; }
+
+  .tier-row {
+    grid-template-columns: 40px 1fr;
+    grid-template-rows: auto auto auto;
+    row-gap: 4px;
+    column-gap: 10px;
+  }
+  .tier-row-emoji { grid-row: 1 / span 3; }
+  .tier-row-range, .tier-row-example {
+    grid-column: 2;
+  }
+  .tier-btn {
+    font-size: 0.85rem;
+    padding: 6px 10px;
+  }
+}

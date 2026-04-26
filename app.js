@@ -74,6 +74,75 @@
     return name;
   };
 
+  // -------- 독서 티어 --------
+  const TIERS = [
+    { key: 'iron',        name: '아이언',       emoji: '🪨', min: 0,   max: 19,    color: '#7d8590', bg: '#e2e5e9' },
+    { key: 'bronze',      name: '브론즈',       emoji: '🥉', min: 20,  max: 49,    color: '#a06632', bg: '#f5d9b9' },
+    { key: 'silver',      name: '실버',         emoji: '🥈', min: 50,  max: 99,    color: '#737373', bg: '#e3e3e3' },
+    { key: 'gold',        name: '골드',         emoji: '🏆', min: 100, max: 169,   color: '#b58a00', bg: '#fff1b6' },
+    { key: 'platinum',    name: '플래티넘',     emoji: '💎', min: 170, max: 249,   color: '#3a8a9c', bg: '#cdf3fb' },
+    { key: 'emerald',     name: '에메랄드',     emoji: '💚', min: 250, max: 349,   color: '#1f8a5d', bg: '#c8f1d8' },
+    { key: 'diamond',     name: '다이아몬드',   emoji: '🔷', min: 350, max: 499,   color: '#1d6fb0', bg: '#cde6f9' },
+    { key: 'master',      name: '마스터',       emoji: '🏅', min: 500, max: 699,   color: '#7a3aa6', bg: '#e7d1f6' },
+    { key: 'grandmaster', name: '그랜드마스터', emoji: '👑', min: 700, max: 899,   color: '#b13a4f', bg: '#ffd0d8' },
+    { key: 'challenger',  name: '챌린저',       emoji: '🔥', min: 900, max: Infinity, color: '#e23a3a', bg: '#ffd2c4' },
+  ];
+
+  const TIER_EXAMPLE = {
+    iron:        '게시글 1개 + 댓글 3개',
+    bronze:      '게시글 3개 + 댓글 5개',
+    silver:      '게시글 5개 + 댓글 10개 + 좋아요 20개',
+    gold:        '게시글 8개 + 댓글 15개 + 좋아요 25개',
+    platinum:    '게시글 12개 + 댓글 25개 + 좋아요 40개',
+    emerald:     '게시글 18개 + 댓글 35개 + 좋아요 60개',
+    diamond:     '게시글 25개 + 댓글 50개 + 좋아요 100개',
+    master:      '게시글 35개 + 댓글 70개 + 좋아요 140개',
+    grandmaster: '게시글 50개 + 댓글 100개 + 좋아요 200개',
+    challenger:  '상위 1~2명만 도달 가능 (학급 내 경쟁)',
+  };
+
+  // 학생 키 (학년-반-번호-이름)만 티어 적용. 교사/관리자/게스트는 제외.
+  const isStudentKey = (k) => typeof k === 'string' && /^\d/.test(k);
+
+  // userKey 의 활동량 (rankingResetAt 이후만 카운트)
+  const computeUserStats = (uKey) => {
+    const since = Number(state.rankingResetAt) || 0;
+    let posts = 0, comments = 0, likes = 0;
+    state.studentPosts.forEach((p) => {
+      if (p.authorInfo.key === uKey && p.createdAt >= since) {
+        posts++;
+        likes += p.likes.length;
+      }
+      p.comments.forEach((c) => {
+        if (c.authorKey === uKey && c.createdAt >= since) comments++;
+      });
+    });
+    state.teacherPosts.forEach((p) => {
+      p.comments.forEach((c) => {
+        if (c.authorKey === uKey && c.createdAt >= since) comments++;
+      });
+    });
+    return { posts, comments, likes };
+  };
+
+  const computeUserScore = (uKey) => {
+    const s = computeUserStats(uKey);
+    return s.posts * 10 + s.comments * 2 + s.likes * 0.5;
+  };
+
+  const tierForScore = (score) =>
+    TIERS.find((t) => score >= t.min && score <= t.max) || TIERS[0];
+
+  const tierForUserKey = (uKey) =>
+    isStudentKey(uKey) ? tierForScore(computeUserScore(uKey)) : null;
+
+  // 학생 이름 옆에 붙는 티어 배지 HTML
+  const tierBadgeHtml = (uKey) => {
+    const t = tierForUserKey(uKey);
+    if (!t) return '';
+    return `<span class="tier-badge tier-${t.key}" title="${escapeHtml(t.name)}"><span class="tb-emoji">${t.emoji}</span><span class="tb-name">${escapeHtml(t.name)}</span></span>`;
+  };
+
   const updateAnonButton = () => {
     const btn = $('#anon-toggle');
     const allowed = !!(session?.user?.isTeacher || session?.user?.isAdmin);
@@ -176,6 +245,7 @@
     '#detail-screen',
     '#ranking-screen',
     '#admin-screen',
+    '#tier-screen',
   ];
   const showOnly = (id) => {
     ALL_SCREENS.forEach((s) =>
@@ -214,6 +284,10 @@
   const showRankingScreen = () => {
     renderRanking();
     showOnly('#ranking-screen');
+  };
+  const showTierScreen = () => {
+    renderTierScreen();
+    showOnly('#tier-screen');
   };
   const showAdminScreen = async () => {
     if (!session?.user?.isAdmin) return toast('관리자만 접근할 수 있어요.');
@@ -359,9 +433,11 @@
     try {
       state = await api('GET', '/api/state');
       buildAliasMap();
+      renderUserArea(); // 본인 티어가 활동에 따라 갱신될 수 있음
       renderTeacherPosts();
       renderBoard();
       if (currentDetailId) renderDetail(currentDetailId);
+      if (!$('#tier-screen').classList.contains('hidden')) renderTierScreen();
     } catch (err) {
       // 401이면 위에서 이미 로그인 화면으로 보냄
       console.warn('refresh failed:', err.message);
@@ -507,13 +583,19 @@
   // -------- 렌더 --------
   const renderUserArea = () => {
     if (!session) return;
-    $('#who-am-i').textContent = userLabel(session.user);
+    const me = session.user;
+    const myTier = isStudentKey(me.key) ? tierForUserKey(me.key) : null;
+    $('#who-am-i').innerHTML =
+      escapeHtml(userLabel(me)) +
+      (myTier ? ' ' + tierBadgeHtml(me.key) : '');
     // 교사 또는 관리자만 우리 반 온 책 읽기 등록 가능
     $('#add-teacher-post-btn').classList.toggle(
       'hidden',
-      !(session.user.isTeacher || session.user.isAdmin)
+      !(me.isTeacher || me.isAdmin)
     );
-    $('#open-admin-btn').classList.toggle('hidden', !session.user.isAdmin);
+    $('#open-admin-btn').classList.toggle('hidden', !me.isAdmin);
+    // 게스트는 티어 버튼 숨김
+    $('#open-tier-btn').classList.toggle('hidden', !!me.isGuest);
     updateAnonButton();
   };
 
@@ -559,7 +641,10 @@
         <article class="post-card" data-id="${p.id}">
           <div class="post-square">
             <img src="${p.images[0]}" alt="${escapeHtml(p.title)}" />
-            <span class="author-tag">${escapeHtml(personDisplay(p.authorInfo))}</span>
+            <span class="author-tag">
+              ${escapeHtml(personDisplay(p.authorInfo))}
+              ${tierBadgeHtml(p.authorInfo.key)}
+            </span>
             <div class="post-overlay">
               <h3 class="p-title">${escapeHtml(p.title)}</h3>
               <div class="p-author">✏ ${escapeHtml(p.author)}</div>
@@ -599,6 +684,7 @@
         <div class="pt-text">${escapeHtml(c.text)}</div>
         <div class="pt-by">
           ${c.isTeacher ? '👩‍🏫 ' : '🌱 '}${escapeHtml(cName)}
+          ${tierBadgeHtml(c.authorKey)}
           ${canDelete ? `<button class="link-btn" data-del-c="${c.id}" style="margin-left:6px;">지우기</button>` : ''}
         </div>
       </div>`;
@@ -694,9 +780,10 @@
         <div class="cover-stack">${covers}</div>
         <div class="detail-info">
           <h2>${escapeHtml(post.title)}</h2>
-          <p class="by">✏ ${escapeHtml(post.author)} · 올린이: ${
-      post.authorInfo.isTeacher ? '👩‍🏫 ' : ''
-    }${escapeHtml(authorDisplay)}</p>
+          <p class="by">
+            ✏ ${escapeHtml(post.author)} · 올린이: ${post.authorInfo.isTeacher ? '👩‍🏫 ' : ''}${escapeHtml(authorDisplay)}
+            ${tierBadgeHtml(post.authorInfo.key)}
+          </p>
           <div class="stats">
             <span class="like-stat">❤ ${post.likes.length}</span>
             <span>💬 ${post.comments.length}</span>
@@ -815,6 +902,7 @@
       <div class="podium-spot rank-${rank}">
         <div class="podium-medal">${MEDAL[rank]}</div>
         <div class="podium-name">${escapeHtml(name)}</div>
+        <div class="podium-tier">${tierBadgeHtml(item.key)}</div>
         <div class="podium-stats">글 ${item.posts}개<br/>댓글 ${item.comments}개</div>
       </div>`;
   };
@@ -846,11 +934,86 @@
         return `
         <li>
           <span class="rank-num">${i + 4}</span>
-          <span class="rank-name">${escapeHtml(name)}</span>
+          <span class="rank-name">${escapeHtml(name)} ${tierBadgeHtml(o.key)}</span>
           <span class="rank-stats">글 ${o.posts}개 · 댓글 ${o.comments}개</span>
         </li>`;
       })
       .join('');
+  };
+
+  // -------- 독서 티어 화면 --------
+  const renderTierScreen = () => {
+    const me = session?.user;
+    const myCard = $('#tier-my-card');
+    const isStudent = !!me && isStudentKey(me.key);
+
+    if (isStudent) {
+      const stats = computeUserStats(me.key);
+      const score = computeUserScore(me.key);
+      const tier = tierForScore(score);
+      const idx = TIERS.findIndex((t) => t.key === tier.key);
+      const next = idx >= 0 && idx < TIERS.length - 1 ? TIERS[idx + 1] : null;
+      const progress = next
+        ? Math.min(100, ((score - tier.min) / (next.min - tier.min)) * 100)
+        : 100;
+      const remaining = next ? Math.max(0, next.min - score) : 0;
+
+      myCard.innerHTML = `
+        <div class="my-tier-hero" style="--tier-bg:${tier.bg}; --tier-color:${tier.color};">
+          <div class="my-tier-emoji">${tier.emoji}</div>
+          <div class="my-tier-text">
+            <div class="my-tier-label">내 티어</div>
+            <div class="my-tier-name">${escapeHtml(tier.name)}</div>
+            <div class="my-tier-score">${score % 1 === 0 ? score : score.toFixed(1)}점</div>
+          </div>
+        </div>
+        <div class="my-tier-stats">
+          <div class="my-stat"><b>${stats.posts}</b> 게시글 × 10점</div>
+          <div class="my-stat"><b>${stats.comments}</b> 댓글 × 2점</div>
+          <div class="my-stat"><b>${stats.likes}</b> 받은 좋아요 × 0.5점</div>
+        </div>
+        ${
+          next
+            ? `<div class="my-tier-progress">
+                <div class="progress-label">
+                  다음 티어: <b>${next.emoji} ${escapeHtml(next.name)}</b>
+                  <span class="progress-remaining">${remaining % 1 === 0 ? remaining : remaining.toFixed(1)}점 남음</span>
+                </div>
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width:${progress}%; background:${tier.color};"></div>
+                </div>
+              </div>`
+            : `<div class="my-tier-progress max">
+                🔥 최고 티어에 도달했어요! 학급의 독서왕!
+              </div>`
+        }
+      `;
+    } else {
+      myCard.innerHTML = `
+        <div class="my-tier-hero non-student">
+          <div class="my-tier-emoji">📚</div>
+          <div class="my-tier-text">
+            <div class="my-tier-name">선생님·관리자는 티어가 없어요</div>
+            <div class="my-tier-sub">아래 등급별 기준을 학생들에게 안내해 주세요.</div>
+          </div>
+        </div>
+      `;
+    }
+
+    // 등급 표
+    const myKey = isStudent ? tierForUserKey(me.key)?.key : null;
+    $('#tier-table').innerHTML = TIERS.map((t) => {
+      const range =
+        t.max === Infinity ? `${t.min}점 이상` : `${t.min} ~ ${t.max}점`;
+      const isMine = t.key === myKey;
+      return `
+        <div class="tier-row ${isMine ? 'mine' : ''}" style="--tier-bg:${t.bg}; --tier-color:${t.color};">
+          <div class="tier-row-emoji">${t.emoji}</div>
+          <div class="tier-row-name">${escapeHtml(t.name)}${isMine ? ' <span class="mine-tag">내 티어</span>' : ''}</div>
+          <div class="tier-row-range">${range}</div>
+          <div class="tier-row-example">${escapeHtml(TIER_EXAMPLE[t.key] || '')}</div>
+        </div>`;
+    }).join('');
   };
 
   // -------- 관리자 화면 --------
@@ -1012,6 +1175,9 @@
     $('#influencer-banner').addEventListener('click', () => showRankingScreen());
     $('#anon-toggle').addEventListener('click', toggleAnonMode);
 
+    // 독서 티어 페이지
+    $('#open-tier-btn').addEventListener('click', () => showTierScreen());
+
     // 관리자 페이지
     $('#open-admin-btn').addEventListener('click', () => showAdminScreen());
     $('#admin-reset-ranking').addEventListener('click', onAdminResetRanking);
@@ -1038,11 +1204,12 @@
         openedModal.classList.add('hidden');
         return;
       }
-      // 2순위: 상세/랭킹/관리자 페이지면 앱 화면으로 복귀
+      // 2순위: 상세/랭킹/관리자/티어 페이지면 앱 화면으로 복귀
       if (
         !$('#detail-screen').classList.contains('hidden') ||
         !$('#ranking-screen').classList.contains('hidden') ||
-        !$('#admin-screen').classList.contains('hidden')
+        !$('#admin-screen').classList.contains('hidden') ||
+        !$('#tier-screen').classList.contains('hidden')
       ) {
         backToApp();
       }
