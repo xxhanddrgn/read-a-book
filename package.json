@@ -1,13 +1,18 @@
 {
   "name": "wb-bookshelf",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "우리 반 책장 — 학급 독서기록 및 감상 공유 플랫폼",
+  "description": "우리 반 책장 — 학급 독서기록 및 감상 공유 플랫폼 (Express + SQLite)",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "node server.js"
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "express": "^4.21.0"
   }
 }

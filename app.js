@@ -1,57 +1,22 @@
 /* =========================================================
- * 우리 반 책장 (Class Bookshelf)
- * 정적 SPA. 데이터는 localStorage에 저장됩니다.
+ * 우리 반 책장 — 프론트엔드 (백엔드 API 기반)
+ * 데이터는 서버(SQLite)에 저장되어 학급 전체가 공유합니다.
  * ========================================================= */
-
 (() => {
   'use strict';
 
-  // -------- 저장소 키 --------
-  const KEY = {
-    USERS: 'wb_users_v1',           // { "1-2-14-홍길동": "1234" }
-    SESSION: 'wb_session_v1',       // 현재 로그인 사용자
-    TEACHER_POSTS: 'wb_teacher_posts_v1',
-    STUDENT_POSTS: 'wb_student_posts_v1',
-    TEACHER_PASS: 'wb_teacher_pass_v1', // 교사 비밀번호 (최초 등록)
-  };
+  const SESSION_KEY = 'wb_session_v2';
+  const POLL_MS = 8000;
 
   // -------- 상태 --------
-  let session = null;     // {grade, classNo, number, name, isTeacher}
-  let users = {};
-  let teacherPosts = [];
-  let studentPosts = [];
+  let session = null; // { token, user }
+  let state = { teacherPosts: [], studentPosts: [] };
+  let currentDetailId = null;
+  let pollTimer = null;
 
   // -------- 유틸 --------
-  const $ = (sel) => document.querySelector(sel);
-  const $$ = (sel) => Array.from(document.querySelectorAll(sel));
-  const uid = () =>
-    Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-
-  const load = () => {
-    users = JSON.parse(localStorage.getItem(KEY.USERS) || '{}');
-    teacherPosts = JSON.parse(localStorage.getItem(KEY.TEACHER_POSTS) || '[]');
-    studentPosts = JSON.parse(localStorage.getItem(KEY.STUDENT_POSTS) || '[]');
-    const s = localStorage.getItem(KEY.SESSION);
-    session = s ? JSON.parse(s) : null;
-  };
-  const saveUsers = () =>
-    localStorage.setItem(KEY.USERS, JSON.stringify(users));
-  const saveTeacherPosts = () =>
-    localStorage.setItem(KEY.TEACHER_POSTS, JSON.stringify(teacherPosts));
-  const saveStudentPosts = () =>
-    localStorage.setItem(KEY.STUDENT_POSTS, JSON.stringify(studentPosts));
-  const saveSession = () => {
-    if (session) localStorage.setItem(KEY.SESSION, JSON.stringify(session));
-    else localStorage.removeItem(KEY.SESSION);
-  };
-
-  const userKey = (u) =>
-    `${u.grade}-${u.classNo}-${u.number}-${u.name.trim()}`;
-  const userLabel = (u) =>
-    u.isTeacher
-      ? `👩‍🏫 ${u.name} 선생님`
-      : `${u.grade}-${u.classNo} ${u.number}번 ${u.name}`;
-
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => Array.from(document.querySelectorAll(s));
   const escapeHtml = (s) =>
     String(s ?? '')
       .replace(/&/g, '&amp;')
@@ -59,6 +24,12 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+
+  const userKey = (u) =>
+    u.isTeacher ? `T-${u.name}` : `${u.grade}-${u.classNo}-${u.number}-${u.name}`;
+
+  const userLabel = (u) =>
+    u.isTeacher ? `👩‍🏫 ${u.name} 선생님` : `${u.grade}-${u.classNo} ${u.number}번 ${u.name}`;
 
   const toast = (msg, ms = 1800) => {
     const el = $('#toast');
@@ -68,7 +39,50 @@
     toast._t = setTimeout(() => el.classList.add('hidden'), ms);
   };
 
-  // 이미지 → 캔버스로 리사이즈하여 base64로 저장 (localStorage 용량 절약)
+  // -------- API --------
+  async function api(method, path, body) {
+    const res = await fetch(path, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    let data = null;
+    try { data = await res.json(); } catch {}
+    if (!res.ok) {
+      if (res.status === 401) {
+        clearSession();
+        showLogin();
+      }
+      throw new Error((data && data.error) || `요청 실패 (${res.status})`);
+    }
+    return data;
+  }
+
+  // -------- 세션 --------
+  const loadSession = () => {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return false;
+    try {
+      session = JSON.parse(raw);
+      return !!session?.token;
+    } catch {
+      return false;
+    }
+  };
+  const saveSession = () => {
+    if (session) localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    else localStorage.removeItem(SESSION_KEY);
+  };
+  const clearSession = () => {
+    session = null;
+    saveSession();
+    stopPolling();
+  };
+
+  // -------- 이미지 압축 --------
   const fileToCompressedDataURL = (file, maxSize = 900, quality = 0.82) =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -82,8 +96,7 @@
           const canvas = document.createElement('canvas');
           canvas.width = width;
           canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
+          canvas.getContext('2d').drawImage(img, 0, 0, width, height);
           resolve(canvas.toDataURL('image/jpeg', quality));
         };
         img.onerror = reject;
@@ -95,84 +108,124 @@
 
   // -------- 화면 전환 --------
   const showLogin = () => {
+    stopPolling();
     $('#login-screen').classList.remove('hidden');
     $('#app-screen').classList.add('hidden');
   };
-  const showApp = () => {
+  const showApp = async () => {
     $('#login-screen').classList.add('hidden');
     $('#app-screen').classList.remove('hidden');
-    renderAll();
+    renderUserArea();
+    await refreshState();
+    startPolling();
   };
 
-  // -------- 로그인 --------
-  const onLoginSubmit = (e) => {
+  // -------- 로그인 / 로그아웃 --------
+  async function onLoginSubmit(e) {
     e.preventDefault();
     const fd = new FormData(e.target);
-    const grade = Number(fd.get('grade'));
-    const classNo = Number(fd.get('classNo'));
-    const number = Number(fd.get('number'));
-    const name = String(fd.get('name')).trim();
-    const password = String(fd.get('password')).trim();
+    try {
+      const data = await api('POST', '/api/auth/login', {
+        grade: Number(fd.get('grade')),
+        classNo: Number(fd.get('classNo')),
+        number: Number(fd.get('number')),
+        name: String(fd.get('name')).trim(),
+        password: String(fd.get('password')),
+        isTeacher: false,
+      });
+      session = { token: data.token, user: data.user };
+      saveSession();
+      toast(`${data.user.name} 친구, 환영해요! 🎉`);
+      showApp();
+    } catch (err) {
+      toast(err.message || '로그인 실패');
+    }
+  }
 
-    if (password.length !== 4) {
-      toast('비밀번호는 4글자로 입력해주세요!');
-      return;
-    }
-    const u = { grade, classNo, number, name, isTeacher: false };
-    const key = userKey(u);
-    const stored = users[key];
-    if (stored && stored !== password) {
-      toast('비밀번호가 달라요. 다시 확인해주세요.');
-      return;
-    }
-    if (!stored) {
-      users[key] = password;
-      saveUsers();
-    }
-    session = u;
-    saveSession();
-    toast(`${name} 친구, 환영해요! 🎉`);
-    showApp();
-  };
-
-  const onTeacherLogin = () => {
+  async function onTeacherLogin() {
     const name = prompt('선생님 성함을 입력해주세요. (예: 김선생)');
     if (!name) return;
-    const stored = localStorage.getItem(KEY.TEACHER_PASS);
-    let pw;
-    if (stored) {
-      pw = prompt('교사 비밀번호 4자리를 입력해주세요.');
-      if (!pw) return;
-      if (pw !== stored) {
-        toast('비밀번호가 달라요.');
-        return;
-      }
-    } else {
-      pw = prompt('교사 비밀번호를 처음 설정합니다. (4자리)');
-      if (!pw || pw.length !== 4) {
-        toast('4자리 비밀번호를 입력해주세요.');
-        return;
-      }
-      localStorage.setItem(KEY.TEACHER_PASS, pw);
+    const password = prompt('교사 비밀번호 4자리를 입력해주세요.');
+    if (!password) return;
+    if (password.length !== 4) {
+      toast('비밀번호는 4자리예요.');
+      return;
     }
-    session = { grade: 0, classNo: 0, number: 0, name: name.trim(), isTeacher: true };
-    saveSession();
-    toast(`${session.name} 선생님, 환영합니다! 👩‍🏫`);
-    showApp();
-  };
+    let teacherCode = '';
+    try {
+      // 처음에는 코드 없이 시도 (이미 등록된 교사인 경우 통과)
+      const data = await api('POST', '/api/auth/login', {
+        name: name.trim(),
+        password,
+        isTeacher: true,
+      });
+      session = { token: data.token, user: data.user };
+      saveSession();
+      toast(`${data.user.name} 선생님, 환영합니다! 👩‍🏫`);
+      showApp();
+      return;
+    } catch (err) {
+      // 신규 등록인 경우 가입 코드를 요구
+      if (!/코드/.test(err.message)) {
+        toast(err.message);
+        return;
+      }
+    }
+    teacherCode = prompt('교사 가입 코드를 입력해주세요. (관리자에게 문의)');
+    if (!teacherCode) return;
+    try {
+      const data = await api('POST', '/api/auth/login', {
+        name: name.trim(),
+        password,
+        isTeacher: true,
+        teacherCode,
+      });
+      session = { token: data.token, user: data.user };
+      saveSession();
+      toast(`${data.user.name} 선생님, 환영합니다! 👩‍🏫`);
+      showApp();
+    } catch (err) {
+      toast(err.message);
+    }
+  }
 
-  const logout = () => {
-    session = null;
-    saveSession();
+  async function logout() {
+    try { await api('POST', '/api/auth/logout'); } catch {}
+    clearSession();
     showLogin();
-  };
+  }
 
-  // -------- 모달 --------
-  const openModal = (id) => $('#' + id).classList.remove('hidden');
-  const closeModal = (id) => $('#' + id).classList.add('hidden');
+  // -------- 폴링 --------
+  function startPolling() {
+    stopPolling();
+    pollTimer = setInterval(refreshState, POLL_MS);
+    document.addEventListener('visibilitychange', onVisibility);
+  }
+  function stopPolling() {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = null;
+    document.removeEventListener('visibilitychange', onVisibility);
+  }
+  function onVisibility() {
+    if (!document.hidden && session) refreshState();
+  }
 
-  // -------- 글쓰기 --------
-  let pendingCovers = []; // base64[]
+  async function refreshState() {
+    if (!session) return;
+    try {
+      state = await api('GET', '/api/state');
+      renderTeacherPosts();
+      renderBoard();
+      renderInfluencerBanner();
+      if (currentDetailId) renderDetail(currentDetailId);
+    } catch (err) {
+      // 401이면 위에서 이미 로그인 화면으로 보냄
+      console.warn('refresh failed:', err.message);
+    }
+  }
+
+  // -------- 게시글 --------
+  let pendingCovers = [];
 
   const onCoverChange = async (e) => {
     const files = Array.from(e.target.files || []);
@@ -204,7 +257,7 @@
     openModal('new-post-modal');
   };
 
-  const onSubmitPost = (e) => {
+  async function onSubmitPost(e) {
     e.preventDefault();
     if (!pendingCovers.length) {
       toast('책 표지 이미지를 1장 이상 올려주세요!');
@@ -212,137 +265,93 @@
     }
     const fd = new FormData(e.target);
     const target = e.target.dataset.target || 'student';
-    const post = {
-      id: uid(),
-      target,
-      images: pendingCovers.slice(),
-      title: String(fd.get('title')).trim(),
-      author: String(fd.get('author')).trim(),
-      review: String(fd.get('review')).trim(),
-      question: String(fd.get('question')).trim(),
-      createdAt: Date.now(),
-      authorInfo: {
-        name: session.name,
-        grade: session.grade,
-        classNo: session.classNo,
-        number: session.number,
-        isTeacher: session.isTeacher,
-        key: userKey(session),
-      },
-      likes: [],
-      comments: [],
-    };
-
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
     try {
-      if (target === 'teacher') {
-        teacherPosts.unshift(post);
-        saveTeacherPosts();
-      } else {
-        studentPosts.unshift(post);
-        saveStudentPosts();
-      }
+      await api('POST', '/api/posts', {
+        target,
+        title: String(fd.get('title')).trim(),
+        author: String(fd.get('author')).trim(),
+        review: String(fd.get('review')).trim(),
+        question: String(fd.get('question')).trim(),
+        images: pendingCovers,
+      });
+      closeModal('new-post-modal');
+      toast('게시글이 올라갔어요! 📮');
+      await refreshState();
     } catch (err) {
-      toast('저장 공간이 부족해요. 이미지를 더 작게 올려보세요.');
-      return;
+      toast(err.message);
+    } finally {
+      submitBtn.disabled = false;
     }
+  }
 
-    closeModal('new-post-modal');
-    toast('게시글이 올라갔어요! 📮');
-    renderAll();
-  };
+  // -------- 좋아요 / 댓글 --------
+  async function toggleLike(postId) {
+    try {
+      await api('POST', `/api/posts/${postId}/like`);
+      await refreshState();
+    } catch (err) {
+      toast(err.message);
+    }
+  }
 
-  // -------- 좋아요/댓글 --------
-  const findPost = (id) => {
-    return (
-      studentPosts.find((p) => p.id === id) ||
-      teacherPosts.find((p) => p.id === id)
-    );
-  };
-  const persistFor = (post) => {
-    if (post.target === 'teacher') saveTeacherPosts();
-    else saveStudentPosts();
-  };
-
-  const toggleLike = (postId) => {
-    const post = findPost(postId);
-    if (!post) return;
-    const me = userKey(session);
-    const i = post.likes.indexOf(me);
-    if (i >= 0) post.likes.splice(i, 1);
-    else post.likes.push(me);
-    persistFor(post);
-    renderAll();
-    // 상세가 열려있으면 다시 그림
-    if (currentDetailId === postId) renderDetail(postId);
-  };
-
-  const addComment = (postId, text) => {
-    const post = findPost(postId);
-    if (!post) return;
-    const t = text.trim();
+  async function addComment(postId, text) {
+    const t = (text || '').trim();
     if (!t) return;
-    post.comments.push({
-      id: uid(),
-      text: t,
-      authorName: session.name,
-      authorKey: userKey(session),
-      isTeacher: session.isTeacher,
-      createdAt: Date.now(),
-    });
-    persistFor(post);
-    renderDetail(postId);
-    renderBoard();
-    renderInfluencerBanner();
-  };
-
-  const deleteComment = (postId, commentId) => {
-    const post = findPost(postId);
-    if (!post) return;
-    const c = post.comments.find((x) => x.id === commentId);
-    if (!c) return;
-    if (c.authorKey !== userKey(session) && !session.isTeacher) {
-      toast('자기가 쓴 글만 지울 수 있어요.');
-      return;
+    try {
+      await api('POST', `/api/posts/${postId}/comments`, { text: t });
+      await refreshState();
+    } catch (err) {
+      toast(err.message);
     }
-    post.comments = post.comments.filter((x) => x.id !== commentId);
-    persistFor(post);
-    renderDetail(postId);
-    renderBoard();
-    renderInfluencerBanner();
-  };
+  }
 
-  const deletePost = (postId) => {
-    const post = findPost(postId);
-    if (!post) return;
-    if (post.authorInfo.key !== userKey(session) && !session.isTeacher) {
-      toast('자기가 쓴 글만 지울 수 있어요.');
-      return;
+  async function deleteComment(postId, commentId) {
+    try {
+      await api('DELETE', `/api/posts/${postId}/comments/${commentId}`);
+      await refreshState();
+    } catch (err) {
+      toast(err.message);
     }
+  }
+
+  async function deletePost(postId) {
     if (!confirm('이 게시글을 정말 지울까요?')) return;
-    teacherPosts = teacherPosts.filter((p) => p.id !== postId);
-    studentPosts = studentPosts.filter((p) => p.id !== postId);
-    saveTeacherPosts();
-    saveStudentPosts();
-    closeModal('detail-modal');
-    currentDetailId = null;
-    renderAll();
-    toast('게시글을 지웠어요.');
+    try {
+      await api('DELETE', `/api/posts/${postId}`);
+      closeModal('detail-modal');
+      currentDetailId = null;
+      toast('게시글을 지웠어요.');
+      await refreshState();
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+
+  // -------- 모달 --------
+  const openModal = (id) => $('#' + id).classList.remove('hidden');
+  const closeModal = (id) => $('#' + id).classList.add('hidden');
+
+  // -------- 렌더 --------
+  const renderUserArea = () => {
+    if (!session) return;
+    $('#who-am-i').textContent = userLabel(session.user);
+    $('#add-teacher-post-btn').classList.toggle('hidden', !session.user.isTeacher);
   };
 
-  // -------- 렌더링 --------
-  const renderUserArea = () => {
-    $('#who-am-i').textContent = userLabel(session);
-    $('#add-teacher-post-btn').classList.toggle('hidden', !session.isTeacher);
-  };
+  const findPost = (id) =>
+    state.studentPosts.find((p) => p.id === id) ||
+    state.teacherPosts.find((p) => p.id === id);
 
   const renderTeacherPosts = () => {
     const wrap = $('#teacher-posts');
-    if (!teacherPosts.length) {
+    if (!state.teacherPosts.length) {
       wrap.innerHTML =
         '<div class="empty-ono">선생님이 함께 읽을 책을 곧 올려주실 거예요!</div>';
       return;
     }
-    wrap.innerHTML = teacherPosts
+    wrap.innerHTML = state.teacherPosts
       .map(
         (p) => `
         <div class="ono-card" data-id="${p.id}">
@@ -353,22 +362,22 @@
         </div>`
       )
       .join('');
-    wrap.querySelectorAll('.ono-card').forEach((el) => {
-      el.addEventListener('click', () => openDetail(el.dataset.id));
-    });
+    wrap.querySelectorAll('.ono-card').forEach((el) =>
+      el.addEventListener('click', () => openDetail(el.dataset.id))
+    );
   };
 
   const renderBoard = () => {
     const grid = $('#student-posts');
     const empty = $('#empty-board');
-    if (!studentPosts.length) {
+    if (!state.studentPosts.length) {
       grid.innerHTML = '';
       empty.classList.remove('hidden');
       return;
     }
     empty.classList.add('hidden');
-    const me = userKey(session);
-    grid.innerHTML = studentPosts
+    const me = userKey(session.user);
+    grid.innerHTML = state.studentPosts
       .map((p) => {
         const liked = p.likes.includes(me);
         return `
@@ -409,8 +418,7 @@
     });
   };
 
-  // -------- 게시글 상세 --------
-  let currentDetailId = null;
+  // -------- 상세 --------
   const POSTIT_COLORS = [
     'var(--postit-yellow)',
     'var(--postit-pink)',
@@ -428,25 +436,20 @@
   const renderDetail = (id) => {
     const post = findPost(id);
     if (!post) return;
-    const me = userKey(session);
+    const me = userKey(session.user);
     const liked = post.likes.includes(me);
-    const isMine =
-      post.authorInfo.key === me || session.isTeacher;
+    const isMine = post.authorInfo.key === me || session.user.isTeacher;
 
     const covers = post.images
-      .map(
-        (src) =>
-          `<img src="${src}" alt="${escapeHtml(post.title)}" />`
-      )
+      .map((src) => `<img src="${src}" alt="${escapeHtml(post.title)}" />`)
       .join('');
 
     const postitsHtml = post.comments.length
       ? post.comments
           .map((c, i) => {
             const color = POSTIT_COLORS[i % POSTIT_COLORS.length];
-            const tilt = ((i * 37) % 7) - 3; // -3 ~ +3deg
-            const canDelete =
-              c.authorKey === me || session.isTeacher;
+            const tilt = ((i * 37) % 7) - 3;
+            const canDelete = c.authorKey === me || session.user.isTeacher;
             return `
             <div class="postit" style="background:${color}; --tilt:${tilt}deg;">
               <div class="pt-text">${escapeHtml(c.text)}</div>
@@ -492,27 +495,31 @@
           <h4 class="wall-title">친구들의 포스트잇 (${post.comments.length})</h4>
           <div class="postit-grid">${postitsHtml}</div>
           <form class="postit-form" data-comment="${post.id}">
-            <textarea required maxlength="300" placeholder="포스트잇에 한마디 남겨보세요!"></textarea>
+            <textarea required maxlength="400" placeholder="포스트잇에 한마디 남겨보세요!"></textarea>
             <button type="submit">붙이기 📌</button>
           </form>
         </div>
       </div>
     `;
 
-    // 이벤트
     $('#detail-body')
       .querySelector('[data-like-detail]')
-      .addEventListener('click', (e) => toggleLike(e.currentTarget.dataset.likeDetail));
+      .addEventListener('click', (e) =>
+        toggleLike(e.currentTarget.dataset.likeDetail)
+      );
 
     const delBtn = $('#detail-body').querySelector('[data-del-post]');
     if (delBtn)
-      delBtn.addEventListener('click', () => deletePost(delBtn.dataset.delPost));
+      delBtn.addEventListener('click', () =>
+        deletePost(delBtn.dataset.delPost)
+      );
 
     const form = $('#detail-body').querySelector('[data-comment]');
     form.addEventListener('submit', (e) => {
       e.preventDefault();
-      const t = form.querySelector('textarea').value;
-      addComment(form.dataset.comment, t);
+      const ta = form.querySelector('textarea');
+      addComment(form.dataset.comment, ta.value);
+      ta.value = '';
     });
 
     $('#detail-body')
@@ -526,22 +533,21 @@
 
   // -------- 책플루언서 --------
   const computeRanking = () => {
-    const map = new Map(); // key -> {name, posts, comments}
+    const map = new Map();
     const bump = (k, name, isTeacher, dPosts, dComments) => {
-      if (isTeacher) return; // 학생만 랭킹에 포함
-      if (!map.has(k))
-        map.set(k, { key: k, name, posts: 0, comments: 0 });
+      if (isTeacher) return;
+      if (!map.has(k)) map.set(k, { key: k, name, posts: 0, comments: 0 });
       const o = map.get(k);
       o.posts += dPosts;
       o.comments += dComments;
     };
-    studentPosts.forEach((p) => {
+    state.studentPosts.forEach((p) => {
       bump(p.authorInfo.key, p.authorInfo.name, p.authorInfo.isTeacher, 1, 0);
       p.comments.forEach((c) =>
         bump(c.authorKey, c.authorName, c.isTeacher, 0, 1)
       );
     });
-    teacherPosts.forEach((p) => {
+    state.teacherPosts.forEach((p) => {
       p.comments.forEach((c) =>
         bump(c.authorKey, c.authorName, c.isTeacher, 0, 1)
       );
@@ -555,8 +561,7 @@
   };
 
   const renderInfluencerBanner = () => {
-    const list = computeRanking();
-    const leader = list[0];
+    const leader = computeRanking()[0];
     $('#banner-leader').textContent = leader
       ? `${leader.name} (${leader.score.toFixed(1)}점)`
       : '아직 없음';
@@ -566,8 +571,7 @@
     const list = computeRanking().slice(0, 10);
     const ol = $('#ranking-list');
     if (!list.length) {
-      ol.innerHTML =
-        '<li>아직 게시글이 없어요. 첫 글을 올려보세요!</li>';
+      ol.innerHTML = '<li>아직 게시글이 없어요. 첫 글을 올려보세요!</li>';
       return;
     }
     const medals = ['🥇', '🥈', '🥉'];
@@ -582,15 +586,6 @@
       .join('');
   };
 
-  // -------- 전체 렌더 --------
-  const renderAll = () => {
-    if (!session) return;
-    renderUserArea();
-    renderTeacherPosts();
-    renderBoard();
-    renderInfluencerBanner();
-  };
-
   // -------- 이벤트 바인딩 --------
   const bind = () => {
     $('#login-form').addEventListener('submit', onLoginSubmit);
@@ -599,7 +594,6 @@
 
     $('#new-post-fab').addEventListener('click', () => openNewPost(false));
     $('#add-teacher-post-btn').addEventListener('click', () => openNewPost(true));
-
     $('#cover-input').addEventListener('change', onCoverChange);
     $('#new-post-form').addEventListener('submit', onSubmitPost);
 
@@ -608,26 +602,25 @@
       openModal('ranking-modal');
     });
 
-    // 모달 닫기 (X 또는 취소 버튼들)
     document.addEventListener('click', (e) => {
       const t = e.target.closest('[data-close]');
       if (t) closeModal(t.dataset.close);
     });
-    // 배경 클릭 닫기
-    $$('.modal').forEach((m) => {
+    $$('.modal').forEach((m) =>
       m.addEventListener('click', (e) => {
         if (e.target === m) m.classList.add('hidden');
-      });
-    });
-    // ESC
+      })
+    );
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') $$('.modal').forEach((m) => m.classList.add('hidden'));
     });
   };
 
   // -------- 시작 --------
-  load();
   bind();
-  if (session) showApp();
-  else showLogin();
+  if (loadSession()) {
+    showApp().catch(() => showLogin());
+  } else {
+    showLogin();
+  }
 })();
