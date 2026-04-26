@@ -366,6 +366,15 @@ app.post('/api/posts', authRequired, blockGuest, (req, res) => {
     if (t === 'student' && !question?.trim()) {
       return res.status(400).json({ error: '책에 대한 질문을 입력해주세요.' });
     }
+    // 학생 소감은 띄어쓰기 제외 80자 이상
+    if (t === 'student') {
+      const reviewLen = String(review).replace(/\s+/g, '').length;
+      if (reviewLen < 80) {
+        return res.status(400).json({
+          error: `소감을 띄어쓰기 빼고 80자 이상 적어주세요. (현재 ${reviewLen}자)`,
+        });
+      }
+    }
     const id = uid();
     db.prepare(
       `INSERT INTO posts (id,target,title,author,review,question,images,authorKey,authorName,authorIsTeacher,createdAt)

@@ -1853,3 +1853,15 @@ body.guest-mode .post-meta {
     padding: 6px 10px;
   }
 }
+
+/* 글자수 카운터 */
+.char-counter {
+  font-family: 'Gowun Dodum', sans-serif;
+  font-size: 0.85rem;
+  margin-top: 4px;
+  color: var(--ink-soft);
+  text-align: right;
+  transition: color 0.15s;
+}
+.char-counter.low { color: #c44; }
+.char-counter.ok { color: #2a8c4d; }

@@ -492,7 +492,25 @@
       });
     });
 
+    updateReviewCounter();
     openModal('new-post-modal');
+  };
+
+  // 띄어쓰기·줄바꿈 제외 글자 수 (학생 소감 최소 분량 검증용)
+  const STUDENT_REVIEW_MIN = 80;
+  const nonSpaceLen = (s) => String(s || '').replace(/\s+/g, '').length;
+
+  const updateReviewCounter = () => {
+    const ta = $('#review-textarea');
+    const counter = $('#review-counter');
+    if (!ta || !counter) return;
+    const n = nonSpaceLen(ta.value);
+    const ok = n >= STUDENT_REVIEW_MIN;
+    counter.textContent = ok
+      ? `${n}자 / 80자 이상 ✓ (띄어쓰기 제외)`
+      : `${n}자 / 80자 이상 (띄어쓰기 제외, ${STUDENT_REVIEW_MIN - n}자 더 적어주세요)`;
+    counter.classList.toggle('ok', ok);
+    counter.classList.toggle('low', !ok);
   };
 
   async function onSubmitPost(e) {
@@ -504,6 +522,18 @@
     const fd = new FormData(e.target);
     const target = e.target.dataset.target || 'student';
     const submitBtn = e.target.querySelector('button[type="submit"]');
+
+    // 학생 소감은 띄어쓰기 빼고 80자 이상
+    if (target === 'student') {
+      const reviewLen = nonSpaceLen(fd.get('review') || '');
+      if (reviewLen < STUDENT_REVIEW_MIN) {
+        toast(`소감을 띄어쓰기 빼고 ${STUDENT_REVIEW_MIN}자 이상 적어주세요. (현재 ${reviewLen}자)`);
+        const ta = $('#review-textarea');
+        if (ta) ta.focus();
+        return;
+      }
+    }
+
     submitBtn.disabled = true;
     try {
       const payload = {
@@ -1299,6 +1329,7 @@
     $('#add-teacher-post-btn').addEventListener('click', () => openNewPost(true));
     $('#cover-input').addEventListener('change', onCoverChange);
     $('#new-post-form').addEventListener('submit', onSubmitPost);
+    $('#review-textarea').addEventListener('input', updateReviewCounter);
     $('#edit-post-form').addEventListener('submit', onSubmitEditPost);
 
     $('#influencer-banner').addEventListener('click', () => showRankingScreen());
