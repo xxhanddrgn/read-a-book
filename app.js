@@ -39,7 +39,7 @@
       ? `🛡 ${u.name} (관리자)`
       : u.isTeacher
       ? `👩‍🏫 ${u.name} 선생님`
-      : `${u.grade}-${u.classNo} ${u.number}번 ${u.name}`;
+      : `${u.name}`;
 
   // -------- 익명 모드 (교사/관리자 전용) --------
   const showAnon = () =>
