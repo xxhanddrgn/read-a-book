@@ -35,12 +35,15 @@
   const userLabel = (u) =>
     u.isGuest
       ? '👀 게스트'
+      : u.isAdmin
+      ? `🛡 ${u.name} (관리자)`
       : u.isTeacher
       ? `👩‍🏫 ${u.name} 선생님`
       : `${u.grade}-${u.classNo} ${u.number}번 ${u.name}`;
 
-  // -------- 익명 모드 (교사 전용) --------
-  const showAnon = () => !!session?.user?.isTeacher && anonMode;
+  // -------- 익명 모드 (교사/관리자 전용) --------
+  const showAnon = () =>
+    !!(session?.user?.isTeacher || session?.user?.isAdmin) && anonMode;
 
   const buildAliasMap = () => {
     aliasMap.clear();
@@ -73,8 +76,8 @@
 
   const updateAnonButton = () => {
     const btn = $('#anon-toggle');
-    const isTeacher = !!session?.user?.isTeacher;
-    btn.classList.toggle('hidden', !isTeacher);
+    const allowed = !!(session?.user?.isTeacher || session?.user?.isAdmin);
+    btn.classList.toggle('hidden', !allowed);
     btn.classList.toggle('on', anonMode);
     btn.querySelector('.anon-icon').textContent = anonMode ? '🙉' : '🙈';
     btn.querySelector('.anon-state').textContent = anonMode ? '켜짐' : '꺼짐';
@@ -167,7 +170,13 @@
     });
 
   // -------- 화면 전환 --------
-  const ALL_SCREENS = ['#login-screen', '#app-screen', '#detail-screen', '#ranking-screen'];
+  const ALL_SCREENS = [
+    '#login-screen',
+    '#app-screen',
+    '#detail-screen',
+    '#ranking-screen',
+    '#admin-screen',
+  ];
   const showOnly = (id) => {
     ALL_SCREENS.forEach((s) =>
       $(s).classList.toggle('hidden', s !== id)
@@ -205,6 +214,12 @@
   const showRankingScreen = () => {
     renderRanking();
     showOnly('#ranking-screen');
+  };
+  const showAdminScreen = async () => {
+    if (!session?.user?.isAdmin) return toast('관리자만 접근할 수 있어요.');
+    showOnly('#admin-screen');
+    renderAdminInfo();
+    await loadAdminUsers();
   };
   const backToApp = () => {
     currentDetailId = null;
@@ -274,6 +289,47 @@
       session = { token: data.token, user: data.user };
       saveSession();
       toast(`${data.user.name} 선생님, 환영합니다! 👩‍🏫`);
+      showApp();
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+
+  async function onAdminLogin() {
+    const name = prompt('관리자 이름을 입력해주세요. (예: admin)');
+    if (!name) return;
+    const password = prompt('관리자 비밀번호 4자리를 입력해주세요.');
+    if (!password) return;
+    if (password.length !== 4) {
+      toast('비밀번호는 4자리예요.');
+      return;
+    }
+    // 1차: 코드 없이 시도 (이미 등록된 관리자면 성공)
+    try {
+      const data = await api('POST', '/api/auth/login', {
+        name: name.trim(), password, isAdmin: true,
+      });
+      session = { token: data.token, user: data.user };
+      saveSession();
+      toast(`${data.user.name} 관리자, 환영합니다! 🛡`);
+      showApp();
+      return;
+    } catch (err) {
+      if (!/코드/.test(err.message)) {
+        toast(err.message);
+        return;
+      }
+    }
+    // 2차: 가입 코드 요구
+    const adminCode = prompt('관리자 가입 코드를 입력해주세요.');
+    if (!adminCode) return;
+    try {
+      const data = await api('POST', '/api/auth/login', {
+        name: name.trim(), password, isAdmin: true, adminCode,
+      });
+      session = { token: data.token, user: data.user };
+      saveSession();
+      toast(`${data.user.name} 관리자, 환영합니다! 🛡`);
       showApp();
     } catch (err) {
       toast(err.message);
@@ -473,7 +529,12 @@
   const renderUserArea = () => {
     if (!session) return;
     $('#who-am-i').textContent = userLabel(session.user);
-    $('#add-teacher-post-btn').classList.toggle('hidden', !session.user.isTeacher);
+    // 교사 또는 관리자만 우리 반 온 책 읽기 등록 가능
+    $('#add-teacher-post-btn').classList.toggle(
+      'hidden',
+      !(session.user.isTeacher || session.user.isAdmin)
+    );
+    $('#open-admin-btn').classList.toggle('hidden', !session.user.isAdmin);
     updateAnonButton();
   };
 
@@ -569,7 +630,8 @@
     if (!post) return;
     const me = userKey(session.user);
     const liked = post.likes.includes(me);
-    const isMine = post.authorInfo.key === me || session.user.isTeacher;
+    const isAdmin = !!session.user.isAdmin;
+    const isMine = post.authorInfo.key === me || session.user.isTeacher || isAdmin;
     const isTeacherPost = post.target === 'teacher';
 
     const covers = post.images
@@ -664,6 +726,7 @@
             <button class="like-big ${liked ? 'liked' : ''}" data-like-detail="${post.id}">
               ${liked ? '❤️ 좋아요!' : '🤍 좋아요'}
             </button>
+            ${isAdmin ? `<button class="edit-btn" data-edit-post="${post.id}">✏ 수정</button>` : ''}
             ${isMine ? `<button class="delete-btn" data-del-post="${post.id}">게시글 지우기</button>` : ''}
           </div>
         </div>
@@ -682,6 +745,10 @@
       delBtn.addEventListener('click', () =>
         deletePost(delBtn.dataset.delPost)
       );
+
+    const editBtn = $('#detail-body').querySelector('[data-edit-post]');
+    if (editBtn)
+      editBtn.addEventListener('click', () => openEditPost(post));
 
     // 탭 전환 (교사 게시글 한정)
     $('#detail-body')
@@ -718,6 +785,7 @@
   // -------- 책플루언서 (명예의 전당) --------
   const computeRanking = () => {
     const map = new Map();
+    const since = Number(state.rankingResetAt) || 0;
     const bump = (k, name, isTeacher, dPosts, dComments) => {
       if (isTeacher) return;
       if (!map.has(k)) map.set(k, { key: k, name, posts: 0, comments: 0 });
@@ -726,15 +794,21 @@
       o.comments += dComments;
     };
     state.studentPosts.forEach((p) => {
-      bump(p.authorInfo.key, p.authorInfo.name, p.authorInfo.isTeacher, 1, 0);
-      p.comments.forEach((c) =>
-        bump(c.authorKey, c.authorName, c.isTeacher, 0, 1)
-      );
+      if (p.createdAt >= since) {
+        bump(p.authorInfo.key, p.authorInfo.name, p.authorInfo.isTeacher, 1, 0);
+      }
+      p.comments.forEach((c) => {
+        if (c.createdAt >= since) {
+          bump(c.authorKey, c.authorName, c.isTeacher, 0, 1);
+        }
+      });
     });
     state.teacherPosts.forEach((p) => {
-      p.comments.forEach((c) =>
-        bump(c.authorKey, c.authorName, c.isTeacher, 0, 1)
-      );
+      p.comments.forEach((c) => {
+        if (c.createdAt >= since) {
+          bump(c.authorKey, c.authorName, c.isTeacher, 0, 1);
+        }
+      });
     });
     // 게시글 수 우선, 동률이면 댓글 수, 그래도 동률이면 이름
     const list = Array.from(map.values());
@@ -800,10 +874,152 @@
       .join('');
   };
 
+  // -------- 관리자 화면 --------
+  let adminUsers = [];
+
+  const renderAdminInfo = () => {
+    const since = Number(state.rankingResetAt) || 0;
+    const info = $('#admin-ranking-info');
+    if (!info) return;
+    info.textContent = since
+      ? `최근 초기화: ${new Date(since).toLocaleString('ko-KR')}`
+      : '아직 초기화한 적 없음 — 모든 기록이 점수에 반영됩니다.';
+  };
+
+  const userTagLabel = (u) => {
+    if (u.isAdmin) return '🛡 관리자';
+    if (u.isTeacher) return '👩‍🏫 교사';
+    return `${u.grade}-${u.classNo} ${u.number}번`;
+  };
+
+  const renderAdminUsers = () => {
+    const wrap = $('#admin-users');
+    if (!wrap) return;
+    if (!adminUsers.length) {
+      wrap.innerHTML = '<div class="admin-empty">아직 등록된 사용자가 없어요.</div>';
+      return;
+    }
+    wrap.innerHTML = adminUsers
+      .map(
+        (u) => `
+        <div class="admin-user-row" data-key="${escapeHtml(u.key)}">
+          <div class="admin-user-info">
+            <span class="admin-user-tag">${escapeHtml(userTagLabel(u))}</span>
+            <span class="admin-user-name">${escapeHtml(u.name)}</span>
+          </div>
+          <div class="admin-user-actions">
+            <button class="btn-ghost" data-admin-pw="${escapeHtml(u.key)}">비번 재설정</button>
+            ${u.key !== session.user.key
+              ? `<button class="btn-danger-text" data-admin-del-user="${escapeHtml(u.key)}">계정 삭제</button>`
+              : ''}
+          </div>
+        </div>`
+      )
+      .join('');
+
+    wrap.querySelectorAll('[data-admin-pw]').forEach((b) =>
+      b.addEventListener('click', () => onAdminResetPassword(b.dataset.adminPw))
+    );
+    wrap.querySelectorAll('[data-admin-del-user]').forEach((b) =>
+      b.addEventListener('click', () => onAdminDeleteUser(b.dataset.adminDelUser))
+    );
+  };
+
+  async function loadAdminUsers() {
+    try {
+      const data = await api('GET', '/api/admin/users');
+      adminUsers = data.users || [];
+      renderAdminUsers();
+    } catch (err) {
+      $('#admin-users').innerHTML = `<div class="admin-empty">${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  async function onAdminResetRanking() {
+    if (!confirm('우리 반 책플루언서 점수를 초기화할까요?\n(게시글은 그대로 남고, 이 시점 이후 활동만 점수에 반영됩니다.)')) return;
+    try {
+      await api('POST', '/api/admin/ranking/reset');
+      toast('책플루언서 점수를 초기화했어요.');
+      await refreshState();
+      renderAdminInfo();
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+
+  async function onAdminResetAllPosts() {
+    if (!confirm('정말로 모든 게시글·댓글·좋아요를 영구히 삭제할까요?\n되돌릴 수 없어요.')) return;
+    if (!confirm('한 번 더 확인합니다. 정말 전체 삭제하시겠어요?')) return;
+    try {
+      await api('POST', '/api/admin/posts/reset-all');
+      toast('모든 게시글을 삭제했어요.');
+      await refreshState();
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+
+  async function onAdminResetPassword(key) {
+    const pw = prompt('새 비밀번호 4자리를 입력하세요:');
+    if (!pw) return;
+    if (pw.length !== 4) return toast('4글자 비밀번호를 입력해주세요.');
+    try {
+      await api('POST', '/api/admin/users/password', { key, password: pw });
+      toast('비밀번호를 변경했어요. 해당 사용자는 다시 로그인해야 합니다.');
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+
+  async function onAdminDeleteUser(key) {
+    if (!confirm(`이 계정(${key})을 삭제할까요?\n해당 사용자가 작성한 게시글과 댓글은 그대로 남습니다.`)) return;
+    try {
+      await api('DELETE', `/api/admin/users/${encodeURIComponent(key)}`);
+      toast('계정을 삭제했어요.');
+      await loadAdminUsers();
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+
+  // -------- 게시글 수정 (관리자) --------
+  const openEditPost = (post) => {
+    const form = $('#edit-post-form');
+    form.elements.id.value = post.id;
+    form.elements.title.value = post.title;
+    form.elements.author.value = post.author;
+    form.elements.review.value = post.review;
+    form.elements.question.value = post.question || '';
+    // 교사 게시글은 질문 행 숨김
+    $('#edit-question-row').classList.toggle('hidden', post.target === 'teacher');
+    openModal('edit-post-modal');
+  };
+
+  async function onSubmitEditPost(e) {
+    e.preventDefault();
+    const form = e.target;
+    const id = form.elements.id.value;
+    const payload = {
+      title: form.elements.title.value.trim(),
+      author: form.elements.author.value.trim(),
+      review: form.elements.review.value.trim(),
+      question: form.elements.question.value.trim(),
+    };
+    try {
+      await api('PUT', `/api/admin/posts/${encodeURIComponent(id)}`, payload);
+      closeModal('edit-post-modal');
+      toast('게시글을 수정했어요.');
+      await refreshState();
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+
   // -------- 이벤트 바인딩 --------
   const bind = () => {
     $('#login-form').addEventListener('submit', onLoginSubmit);
     $('#teacher-login-btn').addEventListener('click', onTeacherLogin);
+    $('#admin-login-btn').addEventListener('click', onAdminLogin);
     $('#guest-login-btn').addEventListener('click', onGuestEnter);
     $('#guest-go-login').addEventListener('click', logout);
     $('#logout-btn').addEventListener('click', logout);
@@ -812,9 +1028,16 @@
     $('#add-teacher-post-btn').addEventListener('click', () => openNewPost(true));
     $('#cover-input').addEventListener('change', onCoverChange);
     $('#new-post-form').addEventListener('submit', onSubmitPost);
+    $('#edit-post-form').addEventListener('submit', onSubmitEditPost);
 
     $('#influencer-banner').addEventListener('click', () => showRankingScreen());
     $('#anon-toggle').addEventListener('click', toggleAnonMode);
+
+    // 관리자 페이지
+    $('#open-admin-btn').addEventListener('click', () => showAdminScreen());
+    $('#admin-reset-ranking').addEventListener('click', onAdminResetRanking);
+    $('#admin-reset-posts').addEventListener('click', onAdminResetAllPosts);
+    $('#admin-go-board').addEventListener('click', () => backToApp());
 
     // 모달 닫기 (새 글 작성 모달은 그대로 모달 사용)
     document.addEventListener('click', (e) => {
@@ -836,10 +1059,11 @@
         openedModal.classList.add('hidden');
         return;
       }
-      // 2순위: 상세/랭킹 페이지면 앱 화면으로 복귀
+      // 2순위: 상세/랭킹/관리자 페이지면 앱 화면으로 복귀
       if (
         !$('#detail-screen').classList.contains('hidden') ||
-        !$('#ranking-screen').classList.contains('hidden')
+        !$('#ranking-screen').classList.contains('hidden') ||
+        !$('#admin-screen').classList.contains('hidden')
       ) {
         backToApp();
       }

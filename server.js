@@ -6,6 +6,7 @@
  *   DATA_DIR      - 기본 ./data. Railway에선 /data (Volume) 권장
  *   APP_SECRET    - 비밀번호 해싱 솔트. 운영시 반드시 변경.
  *   TEACHER_CODE  - 교사 등록용 가입 코드. 기본 0000.
+ *   ADMIN_CODE    - 관리자 등록용 가입 코드. 기본 wbadmin.
  * ========================================================= */
 const express = require('express');
 const path = require('path');
@@ -18,8 +19,12 @@ const HOST = '0.0.0.0';
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const APP_SECRET = process.env.APP_SECRET || 'wb-bookshelf-default-secret-please-change';
 const TEACHER_CODE = process.env.TEACHER_CODE || '0000';
+const ADMIN_CODE = process.env.ADMIN_CODE || 'wbadmin';
 if (TEACHER_CODE === '0000') {
   console.warn('⚠️  TEACHER_CODE 가 기본값(0000)입니다. 운영 시 반드시 변경하세요.');
+}
+if (ADMIN_CODE === 'wbadmin') {
+  console.warn('⚠️  ADMIN_CODE 가 기본값(wbadmin)입니다. 운영 시 반드시 변경하세요.');
 }
 
 // ---------- DB 초기화 ----------
@@ -85,6 +90,29 @@ if (!commentCols.includes('category')) {
   db.exec("ALTER TABLE comments ADD COLUMN category TEXT NOT NULL DEFAULT 'general'");
 }
 
+// 기존 DB에 isAdmin 컬럼이 없으면 추가
+const userCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
+if (!userCols.includes('isAdmin')) {
+  db.exec("ALTER TABLE users ADD COLUMN isAdmin INTEGER NOT NULL DEFAULT 0");
+}
+
+// 앱 설정 테이블 (책플루언서 초기화 시점 등)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+  );
+`);
+const getSetting = (k) => {
+  const r = db.prepare('SELECT value FROM settings WHERE key = ?').get(k);
+  return r ? r.value : null;
+};
+const setSetting = (k, v) => {
+  db.prepare(
+    'INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value'
+  ).run(k, v == null ? null : String(v));
+};
+
 // ---------- 유틸 ----------
 const uid = () =>
   Date.now().toString(36) + crypto.randomBytes(4).toString('hex');
@@ -92,8 +120,10 @@ const newToken = () => crypto.randomBytes(24).toString('hex');
 const hashPw = (pw) =>
   crypto.createHmac('sha256', APP_SECRET).update(String(pw)).digest('hex');
 
-const userKey = ({ grade, classNo, number, name, isTeacher }) =>
-  isTeacher
+const userKey = ({ grade, classNo, number, name, isTeacher, isAdmin }) =>
+  isAdmin
+    ? `A-${name.trim()}`
+    : isTeacher
     ? `T-${name.trim()}`
     : `${grade}-${classNo}-${number}-${name.trim()}`;
 
@@ -106,6 +136,7 @@ const toUserDTO = (u) => ({
   classNo: u.classNo,
   number: u.number,
   isTeacher: !!u.isTeacher,
+  isAdmin: !!u.isAdmin,
   isGuest: isGuestKey(u.key),
 });
 
@@ -139,27 +170,37 @@ function blockGuest(req, res, next) {
   next();
 }
 
+// 관리자 전용 미들웨어
+function adminRequired(req, res, next) {
+  if (!req.user?.isAdmin) {
+    return res.status(403).json({ error: '관리자 권한이 필요합니다.' });
+  }
+  next();
+}
+
 // ---------- 인증 ----------
 app.post('/api/auth/login', (req, res) => {
   try {
     const {
       grade, classNo, number, name, password,
       isTeacher = false, teacherCode = '',
+      isAdmin = false, adminCode = '',
     } = req.body || {};
     const teacher = !!isTeacher;
+    const admin = !!isAdmin;
     const cleanName = String(name || '').trim();
     const pw = String(password || '');
 
     if (!cleanName) return res.status(400).json({ error: '이름을 입력해주세요.' });
     if (pw.length !== 4) return res.status(400).json({ error: '비밀번호는 4글자여야 합니다.' });
-    if (!teacher) {
+    if (!teacher && !admin) {
       if (!Number.isFinite(+grade) || !Number.isFinite(+classNo) || !Number.isFinite(+number))
         return res.status(400).json({ error: '학년/반/번호를 입력해주세요.' });
     }
 
     const u = {
       grade: +grade || 0, classNo: +classNo || 0, number: +number || 0,
-      name: cleanName, isTeacher: teacher,
+      name: cleanName, isTeacher: teacher, isAdmin: admin,
     };
     const key = userKey(u);
     const ph = hashPw(pw);
@@ -175,10 +216,16 @@ app.post('/api/auth/login', (req, res) => {
       if (teacher && String(teacherCode) !== TEACHER_CODE) {
         return res.status(403).json({ error: '교사 가입 코드가 올바르지 않습니다.' });
       }
+      if (admin && String(adminCode) !== ADMIN_CODE) {
+        return res.status(403).json({ error: '관리자 가입 코드가 올바르지 않습니다.' });
+      }
       db.prepare(
-        `INSERT INTO users (key,name,grade,classNo,number,isTeacher,passwordHash,createdAt)
-         VALUES (?,?,?,?,?,?,?,?)`
-      ).run(key, u.name, u.grade, u.classNo, u.number, teacher ? 1 : 0, ph, now);
+        `INSERT INTO users (key,name,grade,classNo,number,isTeacher,isAdmin,passwordHash,createdAt)
+         VALUES (?,?,?,?,?,?,?,?,?)`
+      ).run(
+        key, u.name, u.grade, u.classNo, u.number,
+        teacher ? 1 : 0, admin ? 1 : 0, ph, now
+      );
       row = db.prepare('SELECT * FROM users WHERE key = ?').get(key);
     }
 
@@ -263,6 +310,7 @@ const buildPostsResponse = () => {
   return {
     teacherPosts: enriched.filter((p) => p.target === 'teacher'),
     studentPosts: enriched.filter((p) => p.target === 'student'),
+    rankingResetAt: Number(getSetting('ranking_reset_at')) || 0,
   };
 };
 
@@ -314,7 +362,7 @@ app.post('/api/posts', authRequired, blockGuest, (req, res) => {
 app.delete('/api/posts/:id', authRequired, blockGuest, (req, res) => {
   const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
   if (!post) return res.status(404).json({ error: '게시글을 찾을 수 없습니다.' });
-  if (post.authorKey !== req.user.key && !req.user.isTeacher) {
+  if (post.authorKey !== req.user.key && !req.user.isTeacher && !req.user.isAdmin) {
     return res.status(403).json({ error: '본인 글만 지울 수 있습니다.' });
   }
   db.prepare('DELETE FROM posts WHERE id = ?').run(req.params.id);
@@ -370,7 +418,7 @@ app.delete('/api/posts/:id/comments/:cid', authRequired, blockGuest, (req, res) 
     .prepare('SELECT * FROM comments WHERE id = ? AND postId = ?')
     .get(req.params.cid, req.params.id);
   if (!c) return res.status(404).json({ error: '댓글을 찾을 수 없습니다.' });
-  if (c.authorKey !== req.user.key && !req.user.isTeacher) {
+  if (c.authorKey !== req.user.key && !req.user.isTeacher && !req.user.isAdmin) {
     return res.status(403).json({ error: '본인 댓글만 지울 수 있습니다.' });
   }
   db.prepare('DELETE FROM comments WHERE id = ?').run(req.params.cid);
@@ -378,6 +426,93 @@ app.delete('/api/posts/:id/comments/:cid', authRequired, blockGuest, (req, res) 
 });
 
 // 알 수 없는 API 경로는 JSON 404
+// ---------- 관리자 ----------
+// 모든 사용자 목록 (게스트 제외)
+app.get('/api/admin/users', authRequired, adminRequired, (_req, res) => {
+  const rows = db
+    .prepare(
+      `SELECT key, name, grade, classNo, number, isTeacher, isAdmin, createdAt
+         FROM users
+        WHERE key NOT LIKE 'GUEST-%'
+        ORDER BY isAdmin DESC, isTeacher DESC, grade, classNo, number, name`
+    )
+    .all();
+  res.json({
+    users: rows.map((u) => ({
+      key: u.key,
+      name: u.name,
+      grade: u.grade,
+      classNo: u.classNo,
+      number: u.number,
+      isTeacher: !!u.isTeacher,
+      isAdmin: !!u.isAdmin,
+      createdAt: u.createdAt,
+    })),
+  });
+});
+
+// 사용자 비밀번호 재설정
+app.post('/api/admin/users/password', authRequired, adminRequired, (req, res) => {
+  const { key, password } = req.body || {};
+  const pw = String(password || '');
+  if (!key || pw.length !== 4) {
+    return res.status(400).json({ error: '대상 사용자와 4글자 비밀번호가 필요합니다.' });
+  }
+  const target = db.prepare('SELECT key FROM users WHERE key = ?').get(key);
+  if (!target) return res.status(404).json({ error: '사용자를 찾을 수 없습니다.' });
+  // 비번 재설정 시 해당 사용자의 토큰을 무효화하여 강제 재로그인
+  db.prepare('UPDATE users SET passwordHash = ?, token = NULL WHERE key = ?')
+    .run(hashPw(pw), key);
+  res.json({ ok: true });
+});
+
+// 사용자 삭제
+app.delete('/api/admin/users/:key', authRequired, adminRequired, (req, res) => {
+  if (req.params.key === req.user.key) {
+    return res.status(400).json({ error: '본인 계정은 삭제할 수 없습니다.' });
+  }
+  const r = db.prepare('DELETE FROM users WHERE key = ?').run(req.params.key);
+  if (r.changes === 0) return res.status(404).json({ error: '사용자를 찾을 수 없습니다.' });
+  res.json({ ok: true });
+});
+
+// 게시글 수정
+app.put('/api/admin/posts/:id', authRequired, adminRequired, (req, res) => {
+  const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
+  if (!post) return res.status(404).json({ error: '게시글을 찾을 수 없습니다.' });
+  const { title, author, review, question } = req.body || {};
+  const next = {
+    title: String(title ?? post.title).trim().slice(0, 100),
+    author: String(author ?? post.author).trim().slice(0, 60),
+    review: String(review ?? post.review).trim().slice(0, 1500),
+    question: String(question ?? post.question).trim().slice(0, 400),
+  };
+  if (!next.title || !next.author || !next.review) {
+    return res.status(400).json({ error: '제목/지은이/본문은 비울 수 없습니다.' });
+  }
+  db.prepare(
+    'UPDATE posts SET title=?, author=?, review=?, question=? WHERE id=?'
+  ).run(next.title, next.author, next.review, next.question, req.params.id);
+  res.json({ ok: true });
+});
+
+// 모든 게시글 초기화
+app.post('/api/admin/posts/reset-all', authRequired, adminRequired, (_req, res) => {
+  const tx = db.transaction(() => {
+    db.exec('DELETE FROM comments');
+    db.exec('DELETE FROM likes');
+    db.exec('DELETE FROM posts');
+  });
+  tx();
+  res.json({ ok: true });
+});
+
+// 책플루언서(랭킹) 점수 초기화 — 이 시점 이후의 게시글/댓글만 점수에 반영
+app.post('/api/admin/ranking/reset', authRequired, adminRequired, (_req, res) => {
+  setSetting('ranking_reset_at', Date.now());
+  res.json({ ok: true, rankingResetAt: Number(getSetting('ranking_reset_at')) });
+});
+
 app.use('/api', (_req, res) => res.status(404).json({ error: 'API not found' }));
 
 // ---------- 정적 파일 ----------

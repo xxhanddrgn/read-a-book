@@ -79,6 +79,7 @@
       </form>
 
       <button id="teacher-login-btn" class="link-btn">👩‍🏫 교사 로그인</button>
+      <button id="admin-login-btn" class="link-btn">🛡 관리자 로그인</button>
       <button id="guest-login-btn" class="btn-ghost guest-btn">👀 게스트로 둘러보기</button>
     </div>
   </section>
@@ -97,6 +98,9 @@
       </button>
 
       <div class="user-area">
+        <button id="open-admin-btn" class="admin-btn hidden" title="관리자 페이지">
+          🛡 관리자 페이지
+        </button>
         <button id="anon-toggle" class="anon-toggle hidden" title="학생 이름·학년반을 가립니다">
           <span class="anon-icon">🙈</span>
           <span class="anon-label">익명 모드</span>
@@ -232,6 +236,89 @@
       <ol id="ranking-list" class="ranking-list"></ol>
     </div>
   </section>
+
+  <!-- ============== 관리자 페이지 ============== -->
+  <section id="admin-screen" class="screen page hidden">
+    <header class="page-topbar">
+      <button class="back-btn" data-back="admin">← 돌아가기</button>
+      <span class="page-topbar-title">🛡 관리자 페이지</span>
+      <span class="page-topbar-spacer"></span>
+    </header>
+    <div class="page-body admin-body">
+      <section class="admin-section">
+        <h3>👑 우리 반 책플루언서 점수 초기화</h3>
+        <p class="admin-desc">
+          이 시점 이후로 올라온 게시글·댓글만 점수에 반영됩니다. 게시글은 그대로 남아있어요.
+        </p>
+        <div class="admin-actions">
+          <span id="admin-ranking-info" class="admin-info">불러오는 중…</span>
+          <button id="admin-reset-ranking" class="btn-danger">점수 초기화</button>
+        </div>
+      </section>
+
+      <section class="admin-section">
+        <h3>🗑 모든 게시글 초기화</h3>
+        <p class="admin-desc">
+          모든 학생·교사 게시글, 댓글, 좋아요를 영구히 삭제합니다. 되돌릴 수 없어요.
+        </p>
+        <div class="admin-actions">
+          <button id="admin-reset-posts" class="btn-danger">전체 게시글 삭제</button>
+        </div>
+      </section>
+
+      <section class="admin-section">
+        <h3>👥 사용자 관리</h3>
+        <p class="admin-desc">
+          학생·교사 비밀번호를 재설정하거나 계정을 삭제할 수 있어요.
+        </p>
+        <div id="admin-users" class="admin-users">불러오는 중…</div>
+      </section>
+
+      <section class="admin-section">
+        <h3>✏ 게시글 수정 / 삭제</h3>
+        <p class="admin-desc">
+          관리자는 모든 게시글을 열어서 우측 상단의 ‘수정’ 버튼으로 내용 변경,
+          ‘게시글 지우기’ 로 삭제할 수 있어요.
+        </p>
+        <div class="admin-actions">
+          <button id="admin-go-board" class="btn-ghost">게시판으로 가기</button>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <!-- ============== 게시글 수정 모달 (관리자 전용) ============== -->
+  <div id="edit-post-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3>✏ 게시글 수정</h3>
+        <button class="modal-close" data-close="edit-post-modal">✕</button>
+      </div>
+      <form id="edit-post-form" class="post-form">
+        <input type="hidden" name="id" />
+        <label class="full">
+          <span>책 제목</span>
+          <input type="text" name="title" required maxlength="60" />
+        </label>
+        <label class="full">
+          <span>지은이</span>
+          <input type="text" name="author" required maxlength="40" />
+        </label>
+        <label class="full">
+          <span>본문 (소감 / 선생님 말씀)</span>
+          <textarea name="review" required rows="6" maxlength="1500"></textarea>
+        </label>
+        <label class="full" id="edit-question-row">
+          <span>질문 (학생 게시글만)</span>
+          <textarea name="question" rows="2" maxlength="400"></textarea>
+        </label>
+        <div class="form-actions">
+          <button type="button" class="btn-ghost" data-close="edit-post-modal">취소</button>
+          <button type="submit" class="btn-primary">저장</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <!-- ============== 토스트 ============== -->
   <div id="toast" class="toast hidden"></div>
