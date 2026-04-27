@@ -792,15 +792,8 @@
               ? replies.map((r) => renderReplyMini(r, me, postAuthorKey)).join('')
               : '<div class="empty-replies">아직 답글이 없어요. 첫 답글을 남겨보세요!</div>'}
             <form class="postit-form reply-mini-form" data-comment="${q.postId}" data-category="question" data-parent="${q.id}">
-              <div class="postit-form-row">
-                <textarea maxlength="400" placeholder="↳ 답글 달기"></textarea>
-                <label class="postit-attach" title="이미지 첨부">
-                  📎
-                  <input type="file" accept="image/*" class="postit-file" hidden />
-                </label>
-                <button type="submit">답글 ↩</button>
-              </div>
-              <div class="postit-preview"></div>
+              <textarea maxlength="400" placeholder="↳ 답글 달기"></textarea>
+              <button type="submit">답글 ↩</button>
             </form>
           </div>
         ` : ''}
