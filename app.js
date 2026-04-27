@@ -14,6 +14,8 @@
   let state = { teacherPosts: [], studentPosts: [] };
   let currentDetailId = null;
   let detailTab = 'review'; // 'review' | 'question' (교사 게시글 상세에서만 사용)
+  let studentWallTab = 'general'; // 'general' | 'question' (학생 게시글 담벼락 토글)
+  const openReplyPanels = new Set(); // 펼쳐진 질문 댓글 id 집합
   let pollTimer = null;
   let anonMode = localStorage.getItem(ANON_KEY) === '1';
   const aliasMap = new Map(); // authorKey → '학생 N'
@@ -272,6 +274,8 @@
   const showDetailScreen = (id) => {
     currentDetailId = id;
     detailTab = 'review';
+    studentWallTab = 'general';
+    openReplyPanels.clear();
     const post = findPost(id);
     const titleEl = $('#detail-screen .page-topbar-title');
     if (titleEl) {
@@ -743,33 +747,63 @@
       </div>`;
   };
 
-  // 질문하기 담벼락의 한 항목: 질문 본체 + 답글들 + 답글 입력 폼
-  const renderQuestionItem = (q, i, me, replies, postAuthorKey) => {
-    const replyHtml = replies.length
-      ? replies
-          .map((r, ri) =>
-            renderPostit(r, ri + 100, me, {
-              postAuthorKey,
-              extraClass: 'reply-postit',
-            })
-          )
-          .join('')
-      : '';
+  // 답글 미니카드 — 질문 포스트잇 안에 들여쓰기 되어 표시
+  const renderReplyMini = (r, me, postAuthorKey) => {
+    const canDelete = r.authorKey === me || session.user.isTeacher || session.user.isAdmin;
+    const cName = personDisplay(r);
+    const isAuthor = !!postAuthorKey && r.authorKey === postAuthorKey;
     return `
-      <div class="question-item">
-        ${renderPostit(q, i, me, { postAuthorKey })}
-        ${replyHtml ? `<div class="reply-list">${replyHtml}</div>` : ''}
-        <form class="postit-form reply-form" data-comment="${q.postId}" data-category="question" data-parent="${q.id}">
-          <div class="postit-form-row">
-            <textarea maxlength="400" placeholder="↳ 이 질문에 답글 달기"></textarea>
-            <label class="postit-attach" title="이미지 첨부">
-              📎
-              <input type="file" accept="image/*" class="postit-file" hidden />
-            </label>
-            <button type="submit">답글 ↩</button>
+      <div class="reply-mini">
+        ${r.image ? `<img class="rm-image" src="${r.image}" alt="첨부 이미지" data-postit-image="${r.id}" />` : ''}
+        ${r.text ? `<div class="rm-text">${escapeHtml(r.text)}</div>` : ''}
+        <div class="rm-by">
+          ${r.isTeacher ? '👩‍🏫 ' : isAuthor ? '✍ ' : '🌱 '}${escapeHtml(cName)}
+          ${isAuthor ? '<span class="post-author-tag">작성자</span>' : ''}
+          ${canDelete ? `<button class="link-btn" data-del-c="${r.id}" style="margin-left:6px;">지우기</button>` : ''}
+        </div>
+      </div>`;
+  };
+
+  // 질문 포스트잇 — 일반 포스트잇과 같은 크기, 내부에 답글 토글
+  const renderQuestionPostit = (q, i, me, replies, postAuthorKey) => {
+    const color = POSTIT_COLORS[i % POSTIT_COLORS.length];
+    const tilt = ((i * 37) % 7) - 3;
+    const canDelete = q.authorKey === me || session.user.isTeacher || session.user.isAdmin;
+    const cName = personDisplay(q);
+    const isAuthor = q.authorKey === postAuthorKey;
+    const isExpanded = openReplyPanels.has(q.id);
+    const replyCount = replies.length;
+    return `
+      <div class="postit question-postit ${isExpanded ? 'expanded' : ''}" style="background:${color}; --tilt:${tilt}deg;">
+        ${q.image ? `<img class="pt-image" src="${q.image}" alt="첨부 이미지" data-postit-image="${q.id}" />` : ''}
+        ${q.text ? `<div class="pt-text">${escapeHtml(q.text)}</div>` : ''}
+        <div class="pt-by">
+          ${q.isTeacher ? '👩‍🏫 ' : isAuthor ? '✍ ' : '🌱 '}${escapeHtml(cName)}
+          ${isAuthor ? '<span class="post-author-tag">작성자</span>' : ''}
+          ${tierBadgeHtml(q.authorKey)}
+          ${canDelete ? `<button class="link-btn" data-del-c="${q.id}" style="margin-left:6px;">지우기</button>` : ''}
+        </div>
+        <button type="button" class="reply-toggle" data-reply-toggle="${q.id}">
+          💬 답글 ${replyCount} ${isExpanded ? '▴' : '▾'}
+        </button>
+        ${isExpanded ? `
+          <div class="reply-panel">
+            ${replies.length
+              ? replies.map((r) => renderReplyMini(r, me, postAuthorKey)).join('')
+              : '<div class="empty-replies">아직 답글이 없어요. 첫 답글을 남겨보세요!</div>'}
+            <form class="postit-form reply-mini-form" data-comment="${q.postId}" data-category="question" data-parent="${q.id}">
+              <div class="postit-form-row">
+                <textarea maxlength="400" placeholder="↳ 답글 달기"></textarea>
+                <label class="postit-attach" title="이미지 첨부">
+                  📎
+                  <input type="file" accept="image/*" class="postit-file" hidden />
+                </label>
+                <button type="submit">답글 ↩</button>
+              </div>
+              <div class="postit-preview"></div>
+            </form>
           </div>
-          <div class="postit-preview"></div>
-        </form>
+        ` : ''}
       </div>`;
   };
 
@@ -901,22 +935,22 @@
         }
       });
 
-      // 1인 1포스트잇 — 본인이 이미 'general' 을 남겼는지
       const alreadyGeneral = generalComments.some((c) => c.authorKey === me);
       const postAuthorKey = post.authorInfo.key;
+      const activeTab = studentWallTab === 'question' ? 'question' : 'general';
 
       const generalGrid = generalComments.length
-        ? generalComments.map((c, i) => renderPostit(c, i, me)).join('')
-        : '<div class="empty-wall">아직 포스트잇이 없어요. 첫 한마디를 남겨볼까요? 💛</div>';
+        ? generalComments.map((c, i) => renderPostit(c, i, me, { postAuthorKey })).join('')
+        : '<div class="empty-wall">아직 생각이 없어요. 첫 한마디를 남겨볼까요? 💛</div>';
 
-      const questionList = questionTops.length
+      const questionGrid = questionTops.length
         ? questionTops
-            .map((q, i) => renderQuestionItem(q, i, me, repliesByParent.get(q.id) || [], postAuthorKey))
+            .map((q, i) => renderQuestionPostit(q, i, me, repliesByParent.get(q.id) || [], postAuthorKey))
             .join('')
         : '<div class="empty-wall">아직 질문이 없어요. 책에 대해 궁금한 걸 물어보세요! ❓</div>';
 
       const generalForm = alreadyGeneral
-        ? `<div class="wall-locked">📌 이미 포스트잇을 붙였어요. 한 사람당 한 개만 붙일 수 있습니다. 추가로 이야기하고 싶다면 ❓ 질문하기 담벼락을 이용해 주세요!</div>`
+        ? `<div class="wall-locked">📌 이미 생각을 나눴어요. 한 사람당 하나만 올릴 수 있습니다. 더 이야기하고 싶다면 ❓ 질문 나누기 탭을 이용해주세요!</div>`
         : `<form class="postit-form" data-comment="${post.id}" data-category="general">
             <div class="postit-form-row">
               <textarea maxlength="400" placeholder="포스트잇에 한마디 남겨보세요! (한 사람당 한 개)"></textarea>
@@ -929,6 +963,19 @@
             <div class="postit-preview"></div>
           </form>`;
 
+      const questionForm = `
+        <form class="postit-form question-form" data-comment="${post.id}" data-category="question">
+          <div class="postit-form-row">
+            <textarea maxlength="400" placeholder="이 책에 대해 궁금한 걸 물어보세요! (여러 번 가능)"></textarea>
+            <label class="postit-attach" title="이미지 첨부">
+              📎
+              <input type="file" accept="image/*" class="postit-file" hidden />
+            </label>
+            <button type="submit">질문 올리기 ❓</button>
+          </div>
+          <div class="postit-preview"></div>
+        </form>`;
+
       bodySection = `
         <div class="detail-body">
           <h3>📝 ${escapeHtml(authorDisplay)} 친구의 책 내용 소개 및 소감</h3>
@@ -939,26 +986,27 @@
 
           <h3>🧡 우리들의 담벼락</h3>
           <div class="wall">
-            <h4 class="wall-title">친구들의 포스트잇 (${generalComments.length})</h4>
-            <div class="postit-grid">${generalGrid}</div>
-            ${generalForm}
-          </div>
-
-          <h3 class="wall-section-head">❓ 질문하기</h3>
-          <div class="wall question-wall">
-            <h4 class="wall-title">질문 게시판 (${questionTops.length}) <span class="wall-sub">— 자유롭게 올리고 답글로 이야기 나눠요</span></h4>
-            <div class="questions-list">${questionList}</div>
-            <form class="postit-form question-form" data-comment="${post.id}" data-category="question">
-              <div class="postit-form-row">
-                <textarea maxlength="400" placeholder="이 책에 대해 궁금한 걸 물어보세요! (여러 번 가능)"></textarea>
-                <label class="postit-attach" title="이미지 첨부">
-                  📎
-                  <input type="file" accept="image/*" class="postit-file" hidden />
-                </label>
-                <button type="submit">질문 올리기 ❓</button>
+            <div class="wall-header-row">
+              <h4 class="wall-title">친구들의 포스트잇</h4>
+              <div class="wall-tabs" role="tablist">
+                <button type="button" class="wall-tab ${activeTab === 'general' ? 'active' : ''}" data-wall-tab="general" role="tab">
+                  💛 생각 나누기 <span class="wall-tab-count">${generalComments.length}</span>
+                </button>
+                <button type="button" class="wall-tab ${activeTab === 'question' ? 'active' : ''}" data-wall-tab="question" role="tab">
+                  ❓ 질문 나누기 <span class="wall-tab-count">${questionTops.length}</span>
+                </button>
               </div>
-              <div class="postit-preview"></div>
-            </form>
+            </div>
+
+            <div class="wall-panel ${activeTab === 'general' ? '' : 'hidden'}" data-wall-panel="general">
+              <div class="postit-grid">${generalGrid}</div>
+              ${generalForm}
+            </div>
+
+            <div class="wall-panel ${activeTab === 'question' ? '' : 'hidden'}" data-wall-panel="question">
+              <div class="postit-grid">${questionGrid}</div>
+              ${questionForm}
+            </div>
           </div>
         </div>`;
     }
@@ -1058,6 +1106,28 @@
         b.addEventListener('click', () =>
           deleteComment(post.id, b.dataset.delC)
         )
+      );
+
+    // 학생 게시글 담벼락 탭 (생각 나누기 / 질문 나누기)
+    $('#detail-body')
+      .querySelectorAll('[data-wall-tab]')
+      .forEach((b) =>
+        b.addEventListener('click', () => {
+          studentWallTab = b.dataset.wallTab;
+          renderDetail(id);
+        })
+      );
+
+    // 질문 포스트잇 답글 토글
+    $('#detail-body')
+      .querySelectorAll('[data-reply-toggle]')
+      .forEach((b) =>
+        b.addEventListener('click', () => {
+          const qid = b.dataset.replyToggle;
+          if (openReplyPanels.has(qid)) openReplyPanels.delete(qid);
+          else openReplyPanels.add(qid);
+          renderDetail(id);
+        })
       );
 
     // 포스트잇 안 첨부 이미지 클릭 시 라이트박스 같은 게 없어도 되니 일단 새 탭으로

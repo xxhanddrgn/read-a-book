@@ -1953,3 +1953,153 @@ body.guest-mode .post-meta {
     grid-template-columns: 1fr;
   }
 }
+
+/* ===================== 담벼락 탭 토글 (생각 나누기 / 질문 나누기) ===================== */
+.wall-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.wall-header-row .wall-title {
+  margin: 0;
+}
+.wall-tabs {
+  display: inline-flex;
+  background: #fff;
+  border: 2px solid #ffd591;
+  border-radius: 999px;
+  padding: 3px;
+  gap: 2px;
+  box-shadow: 0 2px 0 #f0b85c;
+}
+.wall-tab {
+  background: none;
+  color: var(--ink-soft);
+  font-family: 'Gowun Dodum', sans-serif;
+  font-size: 0.95rem;
+  padding: 6px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+.wall-tab:hover { background: #fff3e0; color: var(--ink); }
+.wall-tab.active {
+  background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(255, 138, 76, 0.35);
+}
+.wall-tab.active .wall-tab-count {
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--primary);
+}
+.wall-tab-count {
+  background: #fff3e0;
+  color: var(--ink-soft);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 0.78rem;
+  min-width: 22px;
+  text-align: center;
+}
+.wall-panel.hidden { display: none !important; }
+
+/* 질문 포스트잇 — 답글 토글 + 펼친 패널 */
+.question-postit {
+  /* 일반 .postit 과 동일 크기. 펼치면 자연스럽게 세로로 늘어남. */
+}
+.question-postit.expanded {
+  transform: rotate(0);
+  z-index: 2;
+}
+.reply-toggle {
+  align-self: flex-start;
+  margin-top: 8px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  color: var(--ink);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-family: 'Gowun Dodum', sans-serif;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.reply-toggle:hover { background: #fff; }
+
+.reply-panel {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.empty-replies {
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  text-align: center;
+  padding: 6px 0;
+}
+.reply-mini {
+  background: rgba(255, 255, 255, 0.78);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  border-left: 3px solid rgba(0, 0, 0, 0.12);
+}
+.reply-mini .rm-text {
+  white-space: pre-wrap;
+  margin-bottom: 4px;
+}
+.reply-mini .rm-image {
+  width: 100%;
+  max-height: 140px;
+  object-fit: cover;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  cursor: zoom-in;
+}
+.reply-mini .rm-by {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  text-align: right;
+}
+
+.reply-mini-form {
+  margin-top: 4px;
+}
+.reply-mini-form .postit-form-row textarea {
+  min-height: 36px;
+  font-size: 0.92rem;
+}
+.reply-mini-form .postit-attach {
+  font-size: 1rem;
+  padding: 0 10px;
+}
+.reply-mini-form button[type='submit'] {
+  background: linear-gradient(135deg, #6da9e8, #4cb8ff) !important;
+  font-size: 0.9rem;
+  padding: 0 12px;
+}
+
+@media (max-width: 768px) {
+  .wall-header-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .wall-tabs {
+    width: 100%;
+    justify-content: center;
+  }
+  .wall-tab {
+    flex: 1;
+    justify-content: center;
+  }
+}
