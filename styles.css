@@ -402,11 +402,11 @@ body.guest-mode .post-meta {
 
 .ono-card {
   flex: 0 0 220px;
-  height: 280px;
+  min-height: 320px;
   background: #fffaf0;
   border: 2px solid #ffd591;
   border-radius: 16px;
-  padding: 10px;
+  padding: 10px 10px 12px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -416,6 +416,7 @@ body.guest-mode .post-meta {
   transition: transform 0.12s ease, box-shadow 0.12s ease;
   box-shadow: 0 4px 0 #f0b85c;
   position: relative;
+  overflow: hidden;
 }
 .ono-card:hover {
   transform: translateY(-3px);
@@ -427,17 +428,30 @@ body.guest-mode .post-meta {
   border-radius: 10px;
   object-fit: cover;
   background: #f5e6c8;
+  flex-shrink: 0;
 }
 .ono-card .ono-title {
   font-family: 'Gowun Dodum', sans-serif;
   font-size: 1.05rem;
+  line-height: 1.35;
   margin: 8px 0 2px;
   color: var(--ink);
+  /* 제목이 길어도 최대 2줄까지만 표시 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: keep-all;
 }
 .ono-card .ono-author {
   font-family: 'Gowun Dodum', sans-serif; font-weight: 400;
   font-size: 0.9rem;
   color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 .ono-card .ono-tag {
   position: absolute;
@@ -1345,7 +1359,7 @@ body.guest-mode .post-meta {
 
   .ono-card {
     flex: 0 0 160px;
-    height: 230px;
+    min-height: 260px;
   }
   .ono-card .cover {
     height: 130px;
