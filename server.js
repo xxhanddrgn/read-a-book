@@ -366,12 +366,12 @@ app.post('/api/posts', authRequired, blockGuest, (req, res) => {
     if (t === 'student' && !question?.trim()) {
       return res.status(400).json({ error: '책에 대한 질문을 입력해주세요.' });
     }
-    // 학생 소감은 띄어쓰기 제외 80자 이상
+    // 학생 소감은 띄어쓰기 제외 50자 이상
     if (t === 'student') {
       const reviewLen = String(review).replace(/\s+/g, '').length;
-      if (reviewLen < 80) {
+      if (reviewLen < 50) {
         return res.status(400).json({
-          error: `소감을 띄어쓰기 빼고 80자 이상 적어주세요. (현재 ${reviewLen}자)`,
+          error: `소감을 띄어쓰기 빼고 50자 이상 적어주세요. (현재 ${reviewLen}자)`,
         });
       }
     }
@@ -425,12 +425,12 @@ app.put('/api/posts/:id', authRequired, blockGuest, (req, res) => {
   if (!next.title || !next.author || !next.review) {
     return res.status(400).json({ error: '제목/지은이/본문은 비울 수 없습니다.' });
   }
-  // 학생 게시글은 80자 룰 그대로 적용
+  // 학생 게시글은 50자 룰 그대로 적용
   if (post.target === 'student') {
     const reviewLen = next.review.replace(/\s+/g, '').length;
-    if (reviewLen < 80) {
+    if (reviewLen < 50) {
       return res.status(400).json({
-        error: `소감을 띄어쓰기 빼고 80자 이상 적어주세요. (현재 ${reviewLen}자)`,
+        error: `소감을 띄어쓰기 빼고 50자 이상 적어주세요. (현재 ${reviewLen}자)`,
       });
     }
     if (!next.question) {
