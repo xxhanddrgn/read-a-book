@@ -32,6 +32,30 @@
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
 
+  // 작성 시각 짧게 — 오늘/어제는 시:분만, 그 외는 m/d HH:mm
+  const formatTime = (ts) => {
+    if (!ts) return '';
+    const d = new Date(Number(ts));
+    if (isNaN(d.getTime())) return '';
+    const now = new Date();
+    const same = (a, b) =>
+      a.getFullYear() === b.getFullYear() &&
+      a.getMonth() === b.getMonth() &&
+      a.getDate() === b.getDate();
+    const yest = new Date(now);
+    yest.setDate(now.getDate() - 1);
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    if (same(d, now)) return `오늘 ${hh}:${mm}`;
+    if (same(d, yest)) return `어제 ${hh}:${mm}`;
+    const month = d.getMonth() + 1;
+    const day = d.getDate();
+    if (d.getFullYear() === now.getFullYear()) {
+      return `${month}/${day} ${hh}:${mm}`;
+    }
+    return `${d.getFullYear()}.${month}.${day} ${hh}:${mm}`;
+  };
+
   const userKey = (u) =>
     u.isTeacher ? `T-${u.name}` : `${u.grade}-${u.classNo}-${u.number}-${u.name}`;
 
@@ -673,6 +697,7 @@
           <img class="cover" src="${p.images[0]}" alt="${escapeHtml(p.title)}" />
           <div class="ono-title">${escapeHtml(p.title)}</div>
           <div class="ono-author">${escapeHtml(p.author)}</div>
+          <div class="ono-time">${formatTime(p.createdAt)}</div>
         </div>`
       )
       .join('');
@@ -706,8 +731,11 @@
             </div>
           </div>
           <div class="post-meta">
-            <span class="meta-likes">❤ ${p.likes.length}</span>
-            <span class="meta-comments">💬 ${p.comments.length}</span>
+            <span class="meta-time">${formatTime(p.createdAt)}</span>
+            <span class="meta-counts">
+              <span class="meta-likes">❤ ${p.likes.length}</span>
+              <span class="meta-comments">💬 ${p.comments.length}</span>
+            </span>
           </div>
         </article>`
       )
@@ -752,6 +780,7 @@
           ${c.isTeacher ? '👩‍🏫 ' : isPostAuthor ? '✍ ' : '🌱 '}${escapeHtml(cName)}
           ${isPostAuthor ? '<span class="post-author-tag">작성자</span>' : ''}
           ${tierBadgeHtml(c.authorKey)}
+          <span class="pt-time">${formatTime(c.createdAt)}</span>
           ${canEdit && !isEditing ? `<button class="link-btn" data-edit-c="${c.id}" style="margin-left:6px;">수정</button>` : ''}
           ${canEdit && !isEditing ? `<button class="link-btn" data-del-c="${c.id}" style="margin-left:4px;">지우기</button>` : ''}
         </div>
@@ -779,6 +808,7 @@
         <div class="rm-by">
           ${r.isTeacher ? '👩‍🏫 ' : isAuthor ? '✍ ' : '🌱 '}${escapeHtml(cName)}
           ${isAuthor ? '<span class="post-author-tag">작성자</span>' : ''}
+          <span class="pt-time">${formatTime(r.createdAt)}</span>
           ${canEdit && !isEditing ? `<button class="link-btn" data-edit-c="${r.id}" style="margin-left:6px;">수정</button>` : ''}
           ${canEdit && !isEditing ? `<button class="link-btn" data-del-c="${r.id}" style="margin-left:4px;">지우기</button>` : ''}
         </div>
@@ -1033,6 +1063,7 @@
           <p class="by">
             작가: ${escapeHtml(post.author)} · 올린이: ${post.authorInfo.isTeacher ? '👩‍🏫 ' : ''}${escapeHtml(authorDisplay)}
             ${tierBadgeHtml(post.authorInfo.key)}
+            <span class="post-time">🕒 ${formatTime(post.createdAt)}</span>
           </p>
           <div class="stats">
             <span class="like-stat">❤ ${post.likes.length}</span>
