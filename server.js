@@ -94,6 +94,9 @@ if (!commentCols.includes('category')) {
 if (!commentCols.includes('image')) {
   db.exec("ALTER TABLE comments ADD COLUMN image TEXT");
 }
+if (!commentCols.includes('parentId')) {
+  db.exec("ALTER TABLE comments ADD COLUMN parentId TEXT");
+}
 
 // 기존 DB에 isAdmin 컬럼이 없으면 추가
 const userCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
@@ -119,6 +122,10 @@ const setSetting = (k, v) => {
 };
 
 // ---------- 유틸 ----------
+// 학생 소감 분량: 띄어쓰기·문장부호·이모지 등 모두 빼고 한글/영문/숫자만 카운트
+const countContentChars = (s) =>
+  String(s || '').replace(/[^\p{L}\p{N}]/gu, '').length;
+
 const uid = () =>
   Date.now().toString(36) + crypto.randomBytes(4).toString('hex');
 const newToken = () => crypto.randomBytes(24).toString('hex');
@@ -334,6 +341,7 @@ const buildPostsResponse = () => {
       authorName: c.authorName,
       isTeacher: !!c.isTeacher,
       category: c.category || 'general',
+      parentId: c.parentId || null,
       createdAt: c.createdAt,
     })),
   }));
@@ -366,12 +374,12 @@ app.post('/api/posts', authRequired, blockGuest, (req, res) => {
     if (t === 'student' && !question?.trim()) {
       return res.status(400).json({ error: '책에 대한 질문을 입력해주세요.' });
     }
-    // 학생 소감은 띄어쓰기 제외 50자 이상
+    // 학생 소감은 띄어쓰기·문장부호 제외 50자 이상
     if (t === 'student') {
-      const reviewLen = String(review).replace(/\s+/g, '').length;
+      const reviewLen = countContentChars(review);
       if (reviewLen < 50) {
         return res.status(400).json({
-          error: `소감을 띄어쓰기 빼고 50자 이상 적어주세요. (현재 ${reviewLen}자)`,
+          error: `소감을 띄어쓰기·문장부호 빼고 50자 이상 적어주세요. (현재 ${reviewLen}자)`,
         });
       }
     }
@@ -427,10 +435,10 @@ app.put('/api/posts/:id', authRequired, blockGuest, (req, res) => {
   }
   // 학생 게시글은 50자 룰 그대로 적용
   if (post.target === 'student') {
-    const reviewLen = next.review.replace(/\s+/g, '').length;
+    const reviewLen = countContentChars(next.review);
     if (reviewLen < 50) {
       return res.status(400).json({
-        error: `소감을 띄어쓰기 빼고 50자 이상 적어주세요. (현재 ${reviewLen}자)`,
+        error: `소감을 띄어쓰기·문장부호 빼고 50자 이상 적어주세요. (현재 ${reviewLen}자)`,
       });
     }
     if (!next.question) {
@@ -476,19 +484,62 @@ app.post('/api/posts/:id/comments', authRequired, blockGuest, (req, res) => {
   }
   const rawCat = String(req.body?.category || 'general');
   const category = VALID_CATEGORIES.has(rawCat) ? rawCat : 'general';
+  const parentIdRaw = req.body?.parentId ? String(req.body.parentId) : null;
 
   const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
   if (!post) return res.status(404).json({ error: '게시글을 찾을 수 없습니다.' });
-  // 학생 게시글에서는 category 무시하고 general로 저장
-  const finalCat = post.target === 'teacher' ? category : 'general';
+
+  // 학생 게시글: 'general'(친구들의 포스트잇) 또는 'question'(질문하기) 모두 허용
+  // 교사 게시글: 'review' / 'question' 탭 그대로
+  let finalCat;
+  if (post.target === 'teacher') {
+    finalCat = category === 'review' || category === 'question' ? category : 'review';
+  } else {
+    finalCat = category === 'question' ? 'question' : 'general';
+  }
+
+  // 대댓글(parentId) 검증 — 같은 게시글의 댓글이어야 함. 답글은 질문 담벼락에서만 허용.
+  let parentId = null;
+  if (parentIdRaw) {
+    const parent = db
+      .prepare('SELECT id, postId, category, parentId FROM comments WHERE id = ?')
+      .get(parentIdRaw);
+    if (!parent || parent.postId !== req.params.id) {
+      return res.status(400).json({ error: '대상 댓글을 찾을 수 없습니다.' });
+    }
+    if (parent.category !== 'question') {
+      return res.status(400).json({ error: '답글은 질문하기 담벼락에서만 달 수 있어요.' });
+    }
+    // 2단 이상 중첩 방지 — 답글의 답글은 같은 질문에 묶임
+    parentId = parent.parentId || parent.id;
+    finalCat = 'question';
+  }
+
+  // 1인 1포스트잇 제한 (학생 게시글의 'general' 한정, 답글 제외)
+  if (post.target === 'student' && finalCat === 'general' && !parentId) {
+    const existing = db
+      .prepare(
+        `SELECT 1 FROM comments
+           WHERE postId = ? AND category = 'general'
+             AND (parentId IS NULL OR parentId = '')
+             AND authorKey = ?`
+      )
+      .get(req.params.id, req.user.key);
+    if (existing) {
+      return res.status(400).json({
+        error: '한 사람당 포스트잇은 한 개만 붙일 수 있어요. 더 나누고 싶다면 ❓ 질문하기 담벼락을 이용해주세요!',
+      });
+    }
+  }
+
   const cid = uid();
   db.prepare(
-    `INSERT INTO comments (id,postId,text,authorKey,authorName,isTeacher,category,image,createdAt)
-     VALUES (?,?,?,?,?,?,?,?,?)`
+    `INSERT INTO comments (id,postId,text,authorKey,authorName,isTeacher,category,image,parentId,createdAt)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`
   ).run(
     cid, req.params.id, text,
     req.user.key, req.user.name,
-    req.user.isTeacher ? 1 : 0, finalCat, image, Date.now()
+    req.user.isTeacher ? 1 : 0, finalCat, image, parentId, Date.now()
   );
   res.json({ id: cid });
 });

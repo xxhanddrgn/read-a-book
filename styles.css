@@ -1865,3 +1865,91 @@ body.guest-mode .post-meta {
 }
 .char-counter.low { color: #c44; }
 .char-counter.ok { color: #2a8c4d; }
+
+/* ===================== 질문하기 담벼락 ===================== */
+.wall-section-head {
+  margin-top: 18px !important;
+  color: var(--accent) !important;
+}
+.wall-sub {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  font-weight: 400;
+  margin-left: 6px;
+}
+.question-wall {
+  background: repeating-linear-gradient(
+    -45deg,
+    #f0f7ff 0px,
+    #f0f7ff 12px,
+    #e6f1ff 12px,
+    #e6f1ff 24px
+  );
+  border-color: #b3d6ff;
+}
+
+/* 일반 담벼락에서 1인 1포스트잇 잠금 안내 */
+.wall-locked {
+  background: #fff;
+  border: 2px dashed #ffd591;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+  text-align: center;
+  margin-top: 10px;
+}
+
+/* 질문 항목 — 질문 본체 + 답글 리스트 */
+.questions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.question-item {
+  background: rgba(255, 255, 255, 0.65);
+  border-radius: 14px;
+  padding: 12px;
+  border: 1px solid #cfe2ff;
+}
+.reply-list {
+  margin-top: 10px;
+  padding-left: 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  border-left: 3px dashed #b3d6ff;
+}
+.reply-postit {
+  min-height: 90px !important;
+  padding: 10px 10px 10px !important;
+  font-size: 0.95rem !important;
+  transform: rotate(0) !important;
+}
+.reply-postit:hover { transform: translateY(-2px) !important; }
+
+.reply-form {
+  margin-top: 10px;
+}
+.reply-form textarea { min-height: 40px !important; }
+.reply-form button[type='submit'] {
+  background: linear-gradient(135deg, #6da9e8, #4cb8ff) !important;
+}
+
+/* 작성자(원글 올린이) 표시 */
+.post-author-tag {
+  background: var(--primary);
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 0.72rem;
+  margin-left: 4px;
+}
+
+@media (max-width: 768px) {
+  .reply-list {
+    padding-left: 14px;
+    grid-template-columns: 1fr;
+  }
+}

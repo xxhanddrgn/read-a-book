@@ -496,9 +496,11 @@
     openModal('new-post-modal');
   };
 
-  // 띄어쓰기·줄바꿈 제외 글자 수 (학생 소감 최소 분량 검증용)
+  // 학생 소감 분량 카운트: 띄어쓰기·문장부호·이모지 등을 모두 빼고
+  // 한글·영문·숫자(글자/문자/숫자)만 센다.
   const STUDENT_REVIEW_MIN = 50;
-  const nonSpaceLen = (s) => String(s || '').replace(/\s+/g, '').length;
+  const nonSpaceLen = (s) =>
+    String(s || '').replace(/[^\p{L}\p{N}]/gu, '').length;
 
   const updateReviewCounter = () => {
     const ta = $('#review-textarea');
@@ -507,8 +509,8 @@
     const n = nonSpaceLen(ta.value);
     const ok = n >= STUDENT_REVIEW_MIN;
     counter.textContent = ok
-      ? `${n}자 / 50자 이상 ✓ (띄어쓰기 제외)`
-      : `${n}자 / 50자 이상 (띄어쓰기 제외, ${STUDENT_REVIEW_MIN - n}자 더 적어주세요)`;
+      ? `${n}자 / 50자 이상 ✓ (띄어쓰기·문장부호 제외)`
+      : `${n}자 / 50자 이상 (띄어쓰기·문장부호 제외, ${STUDENT_REVIEW_MIN - n}자 더 적어주세요)`;
     counter.classList.toggle('ok', ok);
     counter.classList.toggle('low', !ok);
   };
@@ -527,7 +529,7 @@
     if (target === 'student') {
       const reviewLen = nonSpaceLen(fd.get('review') || '');
       if (reviewLen < STUDENT_REVIEW_MIN) {
-        toast(`소감을 띄어쓰기 빼고 ${STUDENT_REVIEW_MIN}자 이상 적어주세요. (현재 ${reviewLen}자)`);
+        toast(`소감을 띄어쓰기·문장부호 빼고 ${STUDENT_REVIEW_MIN}자 이상 적어주세요. (현재 ${reviewLen}자)`);
         const ta = $('#review-textarea');
         if (ta) ta.focus();
         return;
@@ -573,10 +575,16 @@
     }
   }
 
-  // postit 미리보기용 펜딩 이미지 — 키 형식: `${postId}|${category}`
+  // postit 미리보기용 펜딩 이미지 — 키 형식: `${postId}|${category}|${parentId||''}`
   const pendingPostitImages = new Map();
 
-  async function addComment(postId, text, category = 'general', image = null) {
+  async function addComment(
+    postId,
+    text,
+    category = 'general',
+    image = null,
+    parentId = null
+  ) {
     if (isGuest()) return toast(guestBlockMsg);
     const t = (text || '').trim();
     if (!t && !image) {
@@ -588,8 +596,9 @@
         text: t,
         category,
         image,
+        parentId,
       });
-      pendingPostitImages.delete(`${postId}|${category}`);
+      pendingPostitImages.delete(`${postId}|${category}|${parentId || ''}`);
       await refreshState();
     } catch (err) {
       toast(err.message);
@@ -715,33 +724,70 @@
 
   const openDetail = (id) => showDetailScreen(id);
 
-  const renderPostit = (c, i, me) => {
+  const renderPostit = (c, i, me, opts = {}) => {
     const color = POSTIT_COLORS[i % POSTIT_COLORS.length];
     const tilt = ((i * 37) % 7) - 3;
-    const canDelete = c.authorKey === me || session.user.isTeacher;
+    const canDelete = c.authorKey === me || session.user.isTeacher || session.user.isAdmin;
     const cName = personDisplay(c);
+    const isPostAuthor = !!opts.postAuthorKey && c.authorKey === opts.postAuthorKey;
     return `
-      <div class="postit" style="background:${color}; --tilt:${tilt}deg;">
+      <div class="postit ${opts.extraClass || ''}" style="background:${color}; --tilt:${tilt}deg;">
         ${c.image ? `<img class="pt-image" src="${c.image}" alt="첨부 이미지" data-postit-image="${c.id}" />` : ''}
         ${c.text ? `<div class="pt-text">${escapeHtml(c.text)}</div>` : ''}
         <div class="pt-by">
-          ${c.isTeacher ? '👩‍🏫 ' : '🌱 '}${escapeHtml(cName)}
+          ${c.isTeacher ? '👩‍🏫 ' : isPostAuthor ? '✍ ' : '🌱 '}${escapeHtml(cName)}
+          ${isPostAuthor ? '<span class="post-author-tag">작성자</span>' : ''}
           ${tierBadgeHtml(c.authorKey)}
           ${canDelete ? `<button class="link-btn" data-del-c="${c.id}" style="margin-left:6px;">지우기</button>` : ''}
         </div>
       </div>`;
   };
 
+  // 질문하기 담벼락의 한 항목: 질문 본체 + 답글들 + 답글 입력 폼
+  const renderQuestionItem = (q, i, me, replies, postAuthorKey) => {
+    const replyHtml = replies.length
+      ? replies
+          .map((r, ri) =>
+            renderPostit(r, ri + 100, me, {
+              postAuthorKey,
+              extraClass: 'reply-postit',
+            })
+          )
+          .join('')
+      : '';
+    return `
+      <div class="question-item">
+        ${renderPostit(q, i, me, { postAuthorKey })}
+        ${replyHtml ? `<div class="reply-list">${replyHtml}</div>` : ''}
+        <form class="postit-form reply-form" data-comment="${q.postId}" data-category="question" data-parent="${q.id}">
+          <div class="postit-form-row">
+            <textarea maxlength="400" placeholder="↳ 이 질문에 답글 달기"></textarea>
+            <label class="postit-attach" title="이미지 첨부">
+              📎
+              <input type="file" accept="image/*" class="postit-file" hidden />
+            </label>
+            <button type="submit">답글 ↩</button>
+          </div>
+          <div class="postit-preview"></div>
+        </form>
+      </div>`;
+  };
+
   // 8초 폴링 등으로 renderDetail 이 다시 호출돼도 작성 중이던 포스트잇 입력은 유지하기 위해
   // 재렌더 직전에 textarea 값과 커서 위치를 스냅샷 잡고, 새 DOM 에 그대로 복원한다.
+  const formKey = (form) => {
+    const cat = form.dataset.category || 'general';
+    const parentId = form.dataset.parent || '';
+    return `${form.dataset.comment}|${cat}|${parentId}`;
+  };
+
   const snapshotPostitDrafts = () => {
     const drafts = new Map();
     let focused = null;
     document
       .querySelectorAll('#detail-body .postit-form')
       .forEach((form) => {
-        const cat = form.dataset.category || 'general';
-        const key = `${form.dataset.comment}|${cat}`;
+        const key = formKey(form);
         const ta = form.querySelector('textarea');
         if (!ta) return;
         drafts.set(key, ta.value);
@@ -756,8 +802,7 @@
     document
       .querySelectorAll('#detail-body .postit-form')
       .forEach((form) => {
-        const cat = form.dataset.category || 'general';
-        const key = `${form.dataset.comment}|${cat}`;
+        const key = formKey(form);
         if (!drafts.has(key)) return;
         const ta = form.querySelector('textarea');
         if (!ta) return;
@@ -840,9 +885,49 @@
           </div>
         </div>`;
     } else {
-      const postits = post.comments.length
-        ? post.comments.map((c, i) => renderPostit(c, i, me)).join('')
-        : '<div class="empty-wall">아직 댓글이 없어요. 첫 포스트잇을 붙여볼까요? 💛</div>';
+      // 일반(general) — 답글 없음, 1인 1개
+      const generalComments = post.comments.filter(
+        (c) => (c.category || 'general') === 'general' && !c.parentId
+      );
+      // 질문(question) — 답글(parentId) 있음
+      const questionTops = post.comments.filter(
+        (c) => c.category === 'question' && !c.parentId
+      );
+      const repliesByParent = new Map();
+      post.comments.forEach((c) => {
+        if (c.category === 'question' && c.parentId) {
+          if (!repliesByParent.has(c.parentId)) repliesByParent.set(c.parentId, []);
+          repliesByParent.get(c.parentId).push(c);
+        }
+      });
+
+      // 1인 1포스트잇 — 본인이 이미 'general' 을 남겼는지
+      const alreadyGeneral = generalComments.some((c) => c.authorKey === me);
+      const postAuthorKey = post.authorInfo.key;
+
+      const generalGrid = generalComments.length
+        ? generalComments.map((c, i) => renderPostit(c, i, me)).join('')
+        : '<div class="empty-wall">아직 포스트잇이 없어요. 첫 한마디를 남겨볼까요? 💛</div>';
+
+      const questionList = questionTops.length
+        ? questionTops
+            .map((q, i) => renderQuestionItem(q, i, me, repliesByParent.get(q.id) || [], postAuthorKey))
+            .join('')
+        : '<div class="empty-wall">아직 질문이 없어요. 책에 대해 궁금한 걸 물어보세요! ❓</div>';
+
+      const generalForm = alreadyGeneral
+        ? `<div class="wall-locked">📌 이미 포스트잇을 붙였어요. 한 사람당 한 개만 붙일 수 있습니다. 추가로 이야기하고 싶다면 ❓ 질문하기 담벼락을 이용해 주세요!</div>`
+        : `<form class="postit-form" data-comment="${post.id}" data-category="general">
+            <div class="postit-form-row">
+              <textarea maxlength="400" placeholder="포스트잇에 한마디 남겨보세요! (한 사람당 한 개)"></textarea>
+              <label class="postit-attach" title="이미지 첨부">
+                📎
+                <input type="file" accept="image/*" class="postit-file" hidden />
+              </label>
+              <button type="submit">붙이기 📌</button>
+            </div>
+            <div class="postit-preview"></div>
+          </form>`;
 
       bodySection = `
         <div class="detail-body">
@@ -854,16 +939,23 @@
 
           <h3>🧡 우리들의 담벼락</h3>
           <div class="wall">
-            <h4 class="wall-title">친구들의 포스트잇 (${post.comments.length})</h4>
-            <div class="postit-grid">${postits}</div>
-            <form class="postit-form" data-comment="${post.id}" data-category="general">
+            <h4 class="wall-title">친구들의 포스트잇 (${generalComments.length})</h4>
+            <div class="postit-grid">${generalGrid}</div>
+            ${generalForm}
+          </div>
+
+          <h3 class="wall-section-head">❓ 질문하기</h3>
+          <div class="wall question-wall">
+            <h4 class="wall-title">질문 게시판 (${questionTops.length}) <span class="wall-sub">— 자유롭게 올리고 답글로 이야기 나눠요</span></h4>
+            <div class="questions-list">${questionList}</div>
+            <form class="postit-form question-form" data-comment="${post.id}" data-category="question">
               <div class="postit-form-row">
-                <textarea maxlength="400" placeholder="포스트잇에 한마디 남겨보세요!"></textarea>
+                <textarea maxlength="400" placeholder="이 책에 대해 궁금한 걸 물어보세요! (여러 번 가능)"></textarea>
                 <label class="postit-attach" title="이미지 첨부">
                   📎
                   <input type="file" accept="image/*" class="postit-file" hidden />
                 </label>
-                <button type="submit">붙이기 📌</button>
+                <button type="submit">질문 올리기 ❓</button>
               </div>
               <div class="postit-preview"></div>
             </form>
@@ -922,13 +1014,14 @@
         })
       );
 
-    // 댓글 작성 폼들 (탭별로 여러 개 있을 수 있음)
+    // 댓글 작성 폼들 (탭별로 여러 개 있을 수 있음 + 답글 폼)
     $('#detail-body')
       .querySelectorAll('[data-comment]')
       .forEach((form) => {
         const cat = form.dataset.category || 'general';
         const postId = form.dataset.comment;
-        const key = `${postId}|${cat}`;
+        const parentId = form.dataset.parent || null;
+        const key = `${postId}|${cat}|${parentId || ''}`;
 
         // 첨부 파일 선택 → 압축 → 펜딩 맵에 저장 → 미리보기 갱신
         const fileInput = form.querySelector('.postit-file');
@@ -943,7 +1036,6 @@
             } catch {
               toast('이미지를 불러오지 못했어요.');
             }
-            // 같은 파일 재선택 가능하도록 초기화
             e.target.value = '';
           });
         }
@@ -953,12 +1045,10 @@
           e.preventDefault();
           const ta = form.querySelector('textarea');
           const image = pendingPostitImages.get(key) || null;
-          addComment(postId, ta.value, cat, image);
+          addComment(postId, ta.value, cat, image, parentId);
           ta.value = '';
-          // 미리보기는 addComment 성공 후 refreshState 가 다시 그리며 자동 정리됨
         });
 
-        // 처음 렌더 시 펜딩 이미지가 있으면 미리보기 복원
         renderPostitPreview(form);
       });
 
@@ -988,7 +1078,8 @@
   const renderPostitPreview = (form) => {
     const cat = form.dataset.category || 'general';
     const postId = form.dataset.comment;
-    const key = `${postId}|${cat}`;
+    const parentId = form.dataset.parent || '';
+    const key = `${postId}|${cat}|${parentId}`;
     const dataURL = pendingPostitImages.get(key);
     const preview = form.querySelector('.postit-preview');
     if (!preview) return;
@@ -1312,7 +1403,7 @@
     if (target === 'student') {
       const reviewLen = nonSpaceLen(payload.review);
       if (reviewLen < STUDENT_REVIEW_MIN) {
-        toast(`소감을 띄어쓰기 빼고 ${STUDENT_REVIEW_MIN}자 이상 적어주세요. (현재 ${reviewLen}자)`);
+        toast(`소감을 띄어쓰기·문장부호 빼고 ${STUDENT_REVIEW_MIN}자 이상 적어주세요. (현재 ${reviewLen}자)`);
         return;
       }
       if (!payload.question) {
