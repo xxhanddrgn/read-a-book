@@ -557,6 +557,24 @@ app.delete('/api/posts/:id/comments/:cid', authRequired, blockGuest, (req, res) 
   res.json({ ok: true });
 });
 
+// 댓글 수정 — 본인/교사/관리자
+app.put('/api/posts/:id/comments/:cid', authRequired, blockGuest, (req, res) => {
+  const c = db
+    .prepare('SELECT * FROM comments WHERE id = ? AND postId = ?')
+    .get(req.params.cid, req.params.id);
+  if (!c) return res.status(404).json({ error: '댓글을 찾을 수 없습니다.' });
+  if (c.authorKey !== req.user.key && !req.user.isTeacher && !req.user.isAdmin) {
+    return res.status(403).json({ error: '본인 댓글만 수정할 수 있습니다.' });
+  }
+  const text = String(req.body?.text || '').trim();
+  if (text.length > 400) return res.status(400).json({ error: '너무 긴 댓글은 줄여주세요.' });
+  if (!text && !c.image) {
+    return res.status(400).json({ error: '내용을 입력해주세요.' });
+  }
+  db.prepare('UPDATE comments SET text = ? WHERE id = ?').run(text, req.params.cid);
+  res.json({ ok: true });
+});
+
 // 알 수 없는 API 경로는 JSON 404
 // ---------- 관리자 ----------
 // 모든 사용자 목록 (게스트 제외)

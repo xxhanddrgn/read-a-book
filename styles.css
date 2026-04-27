@@ -2120,3 +2120,62 @@ body.guest-mode .post-meta {
     justify-content: center;
   }
 }
+
+/* ===================== 댓글 인라인 수정 ===================== */
+.postit.editing,
+.reply-mini.editing {
+  outline: 2px dashed var(--primary);
+  outline-offset: 2px;
+}
+.pt-edit,
+.rm-edit {
+  width: 100%;
+  min-height: 70px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 2px solid #fff;
+  background: rgba(255, 255, 255, 0.95);
+  outline: none;
+  font-family: 'Gowun Dodum', sans-serif;
+  font-size: 0.98rem;
+  color: var(--ink);
+  resize: vertical;
+  box-sizing: border-box;
+}
+.rm-edit {
+  min-height: 50px;
+  font-size: 0.92rem;
+}
+.pt-edit:focus,
+.rm-edit:focus {
+  border-color: var(--primary);
+}
+.pt-edit-actions,
+.rm-edit-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.pt-save {
+  background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  color: #fff;
+  font-family: 'Gowun Dodum', sans-serif;
+  font-size: 0.85rem;
+  padding: 4px 12px;
+  border-radius: 999px;
+  box-shadow: 0 2px 0 #d36b30;
+}
+.pt-save:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 0 #d36b30;
+}
+.pt-cancel {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  color: var(--ink);
+  font-family: 'Gowun Dodum', sans-serif;
+  font-size: 0.85rem;
+  padding: 4px 12px;
+  border-radius: 999px;
+}
+.pt-cancel:hover { background: #fff; }

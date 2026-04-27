@@ -16,6 +16,7 @@
   let detailTab = 'review'; // 'review' | 'question' (교사 게시글 상세에서만 사용)
   let studentWallTab = 'general'; // 'general' | 'question' (학생 게시글 담벼락 토글)
   const openReplyPanels = new Set(); // 펼쳐진 질문 댓글 id 집합
+  const editingCommentDrafts = new Map(); // 편집중 댓글 id → 작성중 텍스트
   let pollTimer = null;
   let anonMode = localStorage.getItem(ANON_KEY) === '1';
   const aliasMap = new Map(); // authorKey → '학생 N'
@@ -731,35 +732,55 @@
   const renderPostit = (c, i, me, opts = {}) => {
     const color = POSTIT_COLORS[i % POSTIT_COLORS.length];
     const tilt = ((i * 37) % 7) - 3;
-    const canDelete = c.authorKey === me || session.user.isTeacher || session.user.isAdmin;
+    const canEdit = c.authorKey === me || session.user.isTeacher || session.user.isAdmin;
     const cName = personDisplay(c);
     const isPostAuthor = !!opts.postAuthorKey && c.authorKey === opts.postAuthorKey;
+    const isEditing = editingCommentDrafts.has(c.id);
+    const draft = isEditing ? editingCommentDrafts.get(c.id) : c.text;
+    const bodyHtml = isEditing
+      ? `<textarea class="pt-edit" data-edit-input="${c.id}" maxlength="400">${escapeHtml(draft || '')}</textarea>
+         <div class="pt-edit-actions">
+           <button type="button" class="pt-save" data-save-c="${c.id}">저장</button>
+           <button type="button" class="pt-cancel" data-cancel-c="${c.id}">취소</button>
+         </div>`
+      : `${c.image ? `<img class="pt-image" src="${c.image}" alt="첨부 이미지" data-postit-image="${c.id}" />` : ''}
+         ${c.text ? `<div class="pt-text">${escapeHtml(c.text)}</div>` : ''}`;
     return `
-      <div class="postit ${opts.extraClass || ''}" style="background:${color}; --tilt:${tilt}deg;">
-        ${c.image ? `<img class="pt-image" src="${c.image}" alt="첨부 이미지" data-postit-image="${c.id}" />` : ''}
-        ${c.text ? `<div class="pt-text">${escapeHtml(c.text)}</div>` : ''}
+      <div class="postit ${opts.extraClass || ''} ${isEditing ? 'editing' : ''}" style="background:${color}; --tilt:${isEditing ? 0 : tilt}deg;">
+        ${bodyHtml}
         <div class="pt-by">
           ${c.isTeacher ? '👩‍🏫 ' : isPostAuthor ? '✍ ' : '🌱 '}${escapeHtml(cName)}
           ${isPostAuthor ? '<span class="post-author-tag">작성자</span>' : ''}
           ${tierBadgeHtml(c.authorKey)}
-          ${canDelete ? `<button class="link-btn" data-del-c="${c.id}" style="margin-left:6px;">지우기</button>` : ''}
+          ${canEdit && !isEditing ? `<button class="link-btn" data-edit-c="${c.id}" style="margin-left:6px;">수정</button>` : ''}
+          ${canEdit && !isEditing ? `<button class="link-btn" data-del-c="${c.id}" style="margin-left:4px;">지우기</button>` : ''}
         </div>
       </div>`;
   };
 
   // 답글 미니카드 — 질문 포스트잇 안에 들여쓰기 되어 표시
   const renderReplyMini = (r, me, postAuthorKey) => {
-    const canDelete = r.authorKey === me || session.user.isTeacher || session.user.isAdmin;
+    const canEdit = r.authorKey === me || session.user.isTeacher || session.user.isAdmin;
     const cName = personDisplay(r);
     const isAuthor = !!postAuthorKey && r.authorKey === postAuthorKey;
+    const isEditing = editingCommentDrafts.has(r.id);
+    const draft = isEditing ? editingCommentDrafts.get(r.id) : r.text;
+    const bodyHtml = isEditing
+      ? `<textarea class="rm-edit" data-edit-input="${r.id}" maxlength="400">${escapeHtml(draft || '')}</textarea>
+         <div class="rm-edit-actions">
+           <button type="button" class="pt-save" data-save-c="${r.id}">저장</button>
+           <button type="button" class="pt-cancel" data-cancel-c="${r.id}">취소</button>
+         </div>`
+      : `${r.image ? `<img class="rm-image" src="${r.image}" alt="첨부 이미지" data-postit-image="${r.id}" />` : ''}
+         ${r.text ? `<div class="rm-text">${escapeHtml(r.text)}</div>` : ''}`;
     return `
-      <div class="reply-mini">
-        ${r.image ? `<img class="rm-image" src="${r.image}" alt="첨부 이미지" data-postit-image="${r.id}" />` : ''}
-        ${r.text ? `<div class="rm-text">${escapeHtml(r.text)}</div>` : ''}
+      <div class="reply-mini ${isEditing ? 'editing' : ''}">
+        ${bodyHtml}
         <div class="rm-by">
           ${r.isTeacher ? '👩‍🏫 ' : isAuthor ? '✍ ' : '🌱 '}${escapeHtml(cName)}
           ${isAuthor ? '<span class="post-author-tag">작성자</span>' : ''}
-          ${canDelete ? `<button class="link-btn" data-del-c="${r.id}" style="margin-left:6px;">지우기</button>` : ''}
+          ${canEdit && !isEditing ? `<button class="link-btn" data-edit-c="${r.id}" style="margin-left:6px;">수정</button>` : ''}
+          ${canEdit && !isEditing ? `<button class="link-btn" data-del-c="${r.id}" style="margin-left:4px;">지우기</button>` : ''}
         </div>
       </div>`;
   };
@@ -1099,6 +1120,57 @@
         b.addEventListener('click', () =>
           deleteComment(post.id, b.dataset.delC)
         )
+      );
+
+    // 댓글 수정 시작
+    $('#detail-body')
+      .querySelectorAll('[data-edit-c]')
+      .forEach((b) =>
+        b.addEventListener('click', () => {
+          const cid = b.dataset.editC;
+          const target = post.comments.find((cc) => cc.id === cid);
+          editingCommentDrafts.set(cid, (target && target.text) || '');
+          renderDetail(id);
+        })
+      );
+
+    // 편집 textarea 입력 추적 — 8초 폴링이 와도 작성 중인 글이 살아남도록
+    $('#detail-body')
+      .querySelectorAll('[data-edit-input]')
+      .forEach((ta) =>
+        ta.addEventListener('input', () =>
+          editingCommentDrafts.set(ta.dataset.editInput, ta.value)
+        )
+      );
+
+    // 댓글 저장
+    $('#detail-body')
+      .querySelectorAll('[data-save-c]')
+      .forEach((b) =>
+        b.addEventListener('click', async () => {
+          const cid = b.dataset.saveC;
+          const draft = editingCommentDrafts.get(cid) || '';
+          try {
+            await api('PUT', `/api/posts/${post.id}/comments/${cid}`, {
+              text: draft,
+            });
+            editingCommentDrafts.delete(cid);
+            toast('댓글을 수정했어요.');
+            await refreshState();
+          } catch (err) {
+            toast(err.message);
+          }
+        })
+      );
+
+    // 댓글 수정 취소
+    $('#detail-body')
+      .querySelectorAll('[data-cancel-c]')
+      .forEach((b) =>
+        b.addEventListener('click', () => {
+          editingCommentDrafts.delete(b.dataset.cancelC);
+          renderDetail(id);
+        })
       );
 
     // 학생 게시글 담벼락 탭 (생각 나누기 / 질문 나누기)
