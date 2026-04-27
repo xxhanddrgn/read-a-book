@@ -980,6 +980,7 @@
       });
 
       const alreadyGeneral = generalComments.some((c) => c.authorKey === me);
+      const alreadyQuestion = questionTops.some((q) => q.authorKey === me);
       const postAuthorKey = post.authorInfo.key;
       const activeTab = studentWallTab === 'question' ? 'question' : 'general';
 
@@ -994,10 +995,10 @@
         : '<div class="empty-wall">아직 질문이 없어요. 책에 대해 궁금한 걸 물어보세요! ❓</div>';
 
       const generalForm = alreadyGeneral
-        ? `<div class="wall-locked">📌 이미 생각을 나눴어요. 한 사람당 하나만 올릴 수 있습니다. 더 이야기하고 싶다면 ❓ 질문 나누기 탭을 이용해주세요!</div>`
+        ? `<div class="wall-locked">📌 이미 생각을 나눴어요.</div>`
         : `<form class="postit-form" data-comment="${post.id}" data-category="general">
             <div class="postit-form-row">
-              <textarea maxlength="400" placeholder="포스트잇에 한마디 남겨보세요! (한 사람당 한 개)"></textarea>
+              <textarea maxlength="400" placeholder="포스트잇에 한마디 남겨보세요!"></textarea>
               <label class="postit-attach" title="이미지 첨부">
                 📎
                 <input type="file" accept="image/*" class="postit-file" hidden />
@@ -1007,18 +1008,19 @@
             <div class="postit-preview"></div>
           </form>`;
 
-      const questionForm = `
-        <form class="postit-form question-form" data-comment="${post.id}" data-category="question">
-          <div class="postit-form-row">
-            <textarea maxlength="400" placeholder="이 책에 대해 궁금한 걸 물어보세요! (여러 번 가능)"></textarea>
-            <label class="postit-attach" title="이미지 첨부">
-              📎
-              <input type="file" accept="image/*" class="postit-file" hidden />
-            </label>
-            <button type="submit">질문 올리기 ❓</button>
-          </div>
-          <div class="postit-preview"></div>
-        </form>`;
+      const questionForm = alreadyQuestion
+        ? `<div class="wall-locked">📌 이미 질문을 올렸어요.</div>`
+        : `<form class="postit-form question-form" data-comment="${post.id}" data-category="question">
+            <div class="postit-form-row">
+              <textarea maxlength="400" placeholder="이 책에 대해 궁금한 걸 물어보세요!"></textarea>
+              <label class="postit-attach" title="이미지 첨부">
+                📎
+                <input type="file" accept="image/*" class="postit-file" hidden />
+              </label>
+              <button type="submit">질문 올리기 ❓</button>
+            </div>
+            <div class="postit-preview"></div>
+          </form>`;
 
       bodySection = `
         <div class="detail-body">

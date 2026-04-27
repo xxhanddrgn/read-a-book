@@ -516,19 +516,26 @@ app.post('/api/posts/:id/comments', authRequired, blockGuest, (req, res) => {
     finalCat = 'question';
   }
 
-  // 1인 1포스트잇 제한 (학생 게시글의 'general' 한정, 답글 제외)
-  if (post.target === 'student' && finalCat === 'general' && !parentId) {
+  // 1인 1포스트잇 제한 (학생 게시글의 최상위 댓글, 'general' / 'question' 모두)
+  // 답글(parentId 있음)은 자유롭게 작성 가능.
+  if (
+    post.target === 'student' &&
+    !parentId &&
+    (finalCat === 'general' || finalCat === 'question')
+  ) {
     const existing = db
       .prepare(
         `SELECT 1 FROM comments
-           WHERE postId = ? AND category = 'general'
+           WHERE postId = ?
+             AND category = ?
              AND (parentId IS NULL OR parentId = '')
              AND authorKey = ?`
       )
-      .get(req.params.id, req.user.key);
+      .get(req.params.id, finalCat, req.user.key);
     if (existing) {
+      const where = finalCat === 'general' ? '생각 나누기' : '질문 나누기';
       return res.status(400).json({
-        error: '한 사람당 포스트잇은 한 개만 붙일 수 있어요. 더 나누고 싶다면 ❓ 질문하기 담벼락을 이용해주세요!',
+        error: `${where}는 한 사람당 한 개만 올릴 수 있어요.`,
       });
     }
   }
