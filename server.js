@@ -408,6 +408,41 @@ app.delete('/api/posts/:id', authRequired, blockGuest, (req, res) => {
   res.json({ ok: true });
 });
 
+// 게시글 수정 — 본인/교사/관리자
+app.put('/api/posts/:id', authRequired, blockGuest, (req, res) => {
+  const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
+  if (!post) return res.status(404).json({ error: '게시글을 찾을 수 없습니다.' });
+  if (post.authorKey !== req.user.key && !req.user.isTeacher && !req.user.isAdmin) {
+    return res.status(403).json({ error: '본인 글만 수정할 수 있습니다.' });
+  }
+  const { title, author, review, question } = req.body || {};
+  const next = {
+    title: String(title ?? post.title).trim().slice(0, 100),
+    author: String(author ?? post.author).trim().slice(0, 60),
+    review: String(review ?? post.review).trim().slice(0, 1500),
+    question: String(question ?? post.question).trim().slice(0, 400),
+  };
+  if (!next.title || !next.author || !next.review) {
+    return res.status(400).json({ error: '제목/지은이/본문은 비울 수 없습니다.' });
+  }
+  // 학생 게시글은 80자 룰 그대로 적용
+  if (post.target === 'student') {
+    const reviewLen = next.review.replace(/\s+/g, '').length;
+    if (reviewLen < 80) {
+      return res.status(400).json({
+        error: `소감을 띄어쓰기 빼고 80자 이상 적어주세요. (현재 ${reviewLen}자)`,
+      });
+    }
+    if (!next.question) {
+      return res.status(400).json({ error: '책에 대한 질문을 입력해주세요.' });
+    }
+  }
+  db.prepare(
+    'UPDATE posts SET title=?, author=?, review=?, question=? WHERE id=?'
+  ).run(next.title, next.author, next.review, next.question, req.params.id);
+  res.json({ ok: true });
+});
+
 // 좋아요 토글
 app.post('/api/posts/:id/like', authRequired, blockGuest, (req, res) => {
   const post = db.prepare('SELECT 1 FROM posts WHERE id = ?').get(req.params.id);
@@ -518,26 +553,6 @@ app.delete('/api/admin/users/:key', authRequired, adminRequired, (req, res) => {
   }
   const r = db.prepare('DELETE FROM users WHERE key = ?').run(req.params.key);
   if (r.changes === 0) return res.status(404).json({ error: '사용자를 찾을 수 없습니다.' });
-  res.json({ ok: true });
-});
-
-// 게시글 수정
-app.put('/api/admin/posts/:id', authRequired, adminRequired, (req, res) => {
-  const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
-  if (!post) return res.status(404).json({ error: '게시글을 찾을 수 없습니다.' });
-  const { title, author, review, question } = req.body || {};
-  const next = {
-    title: String(title ?? post.title).trim().slice(0, 100),
-    author: String(author ?? post.author).trim().slice(0, 60),
-    review: String(review ?? post.review).trim().slice(0, 1500),
-    question: String(question ?? post.question).trim().slice(0, 400),
-  };
-  if (!next.title || !next.author || !next.review) {
-    return res.status(400).json({ error: '제목/지은이/본문은 비울 수 없습니다.' });
-  }
-  db.prepare(
-    'UPDATE posts SET title=?, author=?, review=?, question=? WHERE id=?'
-  ).run(next.title, next.author, next.review, next.question, req.params.id);
   res.json({ ok: true });
 });
 

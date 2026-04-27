@@ -888,7 +888,7 @@
             <button class="like-big ${liked ? 'liked' : ''}" data-like-detail="${post.id}">
               ${liked ? '❤️ 좋아요!' : '🤍 좋아요'}
             </button>
-            ${isAdmin ? `<button class="edit-btn" data-edit-post="${post.id}">✏ 수정</button>` : ''}
+            ${isMine ? `<button class="edit-btn" data-edit-post="${post.id}">✏ 수정</button>` : ''}
             ${isMine ? `<button class="delete-btn" data-del-post="${post.id}">게시글 지우기</button>` : ''}
           </div>
         </div>
@@ -1283,7 +1283,7 @@
     }
   }
 
-  // -------- 게시글 수정 (관리자) --------
+  // -------- 게시글 수정 (본인/교사/관리자) --------
   const openEditPost = (post) => {
     const form = $('#edit-post-form');
     form.elements.id.value = post.id;
@@ -1291,6 +1291,7 @@
     form.elements.author.value = post.author;
     form.elements.review.value = post.review;
     form.elements.question.value = post.question || '';
+    form.dataset.target = post.target;
     // 교사 게시글은 질문 행 숨김
     $('#edit-question-row').classList.toggle('hidden', post.target === 'teacher');
     openModal('edit-post-modal');
@@ -1300,14 +1301,27 @@
     e.preventDefault();
     const form = e.target;
     const id = form.elements.id.value;
+    const target = form.dataset.target || 'student';
     const payload = {
       title: form.elements.title.value.trim(),
       author: form.elements.author.value.trim(),
       review: form.elements.review.value.trim(),
       question: form.elements.question.value.trim(),
     };
+    // 학생 게시글이면 80자 룰 + 질문 필수
+    if (target === 'student') {
+      const reviewLen = nonSpaceLen(payload.review);
+      if (reviewLen < STUDENT_REVIEW_MIN) {
+        toast(`소감을 띄어쓰기 빼고 ${STUDENT_REVIEW_MIN}자 이상 적어주세요. (현재 ${reviewLen}자)`);
+        return;
+      }
+      if (!payload.question) {
+        toast('책에 대한 질문을 입력해주세요.');
+        return;
+      }
+    }
     try {
-      await api('PUT', `/api/admin/posts/${encodeURIComponent(id)}`, payload);
+      await api('PUT', `/api/posts/${encodeURIComponent(id)}`, payload);
       closeModal('edit-post-modal');
       toast('게시글을 수정했어요.');
       await refreshState();
