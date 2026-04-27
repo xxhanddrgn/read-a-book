@@ -931,7 +931,7 @@
 
       bodySection = `
         <div class="detail-body">
-          <h3>📝 ${escapeHtml(authorDisplay)} 친구의 소감</h3>
+          <h3>📝 ${escapeHtml(authorDisplay)} 친구의 책 내용 소개 및 소감</h3>
           <div class="review">${escapeHtml(post.review)}</div>
 
           <h3>💭 함께 생각해볼 질문</h3>
