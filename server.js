@@ -335,6 +335,7 @@ const buildPostsResponse = () => {
     likes: likeStmt.all(p.id).map((r) => r.userKey),
     comments: commentStmt.all(p.id).map((c) => ({
       id: c.id,
+      postId: c.postId,
       text: c.text,
       image: c.image || null,
       authorKey: c.authorKey,
