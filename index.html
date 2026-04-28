@@ -137,6 +137,7 @@
           <h2>🌳 우리들의 책 이야기</h2>
         </div>
         <div class="board-grid" id="student-posts"></div>
+        <div id="board-pagination" class="board-pagination hidden"></div>
         <div id="empty-board" class="empty-board">
           아직 올라온 글이 없어요. 첫 번째 글의 주인공이 되어볼까요? ✨
         </div>
@@ -250,12 +251,25 @@
       <span class="page-topbar-spacer"></span>
     </header>
     <div class="page-body">
-      <div id="tier-my-card" class="tier-my-card"></div>
-      <h3 class="tier-table-heading">📊 등급별 점수 기준</h3>
-      <p class="tier-table-sub">
-        점수 = 게시글 × 10 + 댓글 × 2 + 누른 좋아요 × 0.5
-      </p>
-      <div id="tier-table" class="tier-table"></div>
+      <div class="tier-tabs">
+        <button class="tier-tab active" data-tier-tab="my">🎖 내 티어 확인하기</button>
+        <button class="tier-tab" data-tier-tab="class">👥 우리 반 티어 확인하기</button>
+      </div>
+
+      <div id="tier-my-view" class="tier-view">
+        <div id="tier-my-card" class="tier-my-card"></div>
+        <h3 class="tier-table-heading">📊 등급별 점수 기준</h3>
+        <p class="tier-table-sub">
+          점수 = 게시글 × 10 + 댓글 × 2 + 누른 좋아요 × 0.5
+        </p>
+        <div id="tier-table" class="tier-table"></div>
+      </div>
+
+      <div id="tier-class-view" class="tier-view hidden">
+        <h3 class="tier-table-heading">👥 우리 반 친구들의 티어</h3>
+        <p class="tier-table-sub">학생들의 활동에 따라 자동으로 분류돼요. (점수는 비공개)</p>
+        <div id="tier-class-list" class="tier-class-list"></div>
+      </div>
     </div>
   </section>
 

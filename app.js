@@ -17,6 +17,9 @@
   let studentWallTab = 'general'; // 'general' | 'question' (학생 게시글 담벼락 토글)
   const openReplyPanels = new Set(); // 펼쳐진 질문 댓글 id 집합
   const editingCommentDrafts = new Map(); // 편집중 댓글 id → 작성중 텍스트
+  let boardPage = 1; // 학생 게시판 페이지 (20개 단위)
+  const POSTS_PER_PAGE = 20;
+  let tierPageView = 'my'; // 'my' | 'class'
   let pollTimer = null;
   let anonMode = localStorage.getItem(ANON_KEY) === '1';
   const aliasMap = new Map(); // authorKey → '학생 N'
@@ -315,6 +318,7 @@
     showOnly('#ranking-screen');
   };
   const showTierScreen = () => {
+    tierPageView = 'my';
     renderTierScreen();
     showOnly('#tier-screen');
   };
@@ -709,13 +713,20 @@
   const renderBoard = () => {
     const grid = $('#student-posts');
     const empty = $('#empty-board');
-    if (!state.studentPosts.length) {
+    const all = state.studentPosts;
+    if (!all.length) {
       grid.innerHTML = '';
       empty.classList.remove('hidden');
+      renderBoardPagination(0);
       return;
     }
     empty.classList.add('hidden');
-    grid.innerHTML = state.studentPosts
+    const totalPages = Math.max(1, Math.ceil(all.length / POSTS_PER_PAGE));
+    if (boardPage > totalPages) boardPage = totalPages;
+    if (boardPage < 1) boardPage = 1;
+    const start = (boardPage - 1) * POSTS_PER_PAGE;
+    const slice = all.slice(start, start + POSTS_PER_PAGE);
+    grid.innerHTML = slice
       .map(
         (p) => `
         <article class="post-card" data-id="${p.id}">
@@ -743,6 +754,43 @@
 
     grid.querySelectorAll('.post-card').forEach((card) => {
       card.addEventListener('click', () => openDetail(card.dataset.id));
+    });
+
+    renderBoardPagination(totalPages);
+  };
+
+  const renderBoardPagination = (totalPages) => {
+    const el = $('#board-pagination');
+    if (!el) return;
+    if (totalPages <= 1) {
+      el.classList.add('hidden');
+      el.innerHTML = '';
+      return;
+    }
+    el.classList.remove('hidden');
+    const pages = [];
+    for (let i = 1; i <= totalPages; i++) pages.push(i);
+    el.innerHTML = `
+      <button class="page-nav" data-page="prev" ${boardPage === 1 ? 'disabled' : ''}>← 이전</button>
+      <div class="page-numbers">
+        ${pages
+          .map(
+            (p) =>
+              `<button class="page-num ${p === boardPage ? 'active' : ''}" data-page="${p}">${p}</button>`
+          )
+          .join('')}
+      </div>
+      <button class="page-nav" data-page="next" ${boardPage === totalPages ? 'disabled' : ''}>다음 →</button>
+    `;
+    el.querySelectorAll('[data-page]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const p = b.dataset.page;
+        if (p === 'prev') boardPage = Math.max(1, boardPage - 1);
+        else if (p === 'next') boardPage = Math.min(totalPages, boardPage + 1);
+        else boardPage = Number(p) || 1;
+        renderBoard();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
     });
   };
 
@@ -1361,6 +1409,18 @@
 
   // -------- 독서 티어 화면 --------
   const renderTierScreen = () => {
+    // 탭 활성/뷰 토글
+    document.querySelectorAll('#tier-screen .tier-tab').forEach((b) =>
+      b.classList.toggle('active', b.dataset.tierTab === tierPageView)
+    );
+    $('#tier-my-view').classList.toggle('hidden', tierPageView !== 'my');
+    $('#tier-class-view').classList.toggle('hidden', tierPageView !== 'class');
+
+    if (tierPageView === 'class') {
+      renderTierClassView();
+      return;
+    }
+
     const me = session?.user;
     const myCard = $('#tier-my-card');
     const isStudent = !!me && isStudentKey(me.key);
@@ -1432,6 +1492,76 @@
           <div class="tier-row-example">${escapeHtml(TIER_EXAMPLE[t.key] || '')}</div>
         </div>`;
     }).join('');
+  };
+
+  // 우리 반 친구들의 티어 — 점수는 비공개, 등급별로 묶어서 보여줌
+  const collectClassroomStudents = () => {
+    const map = new Map(); // key → name
+    const add = (info) => {
+      const k = info.key ?? info.authorKey;
+      const n = info.name ?? info.authorName;
+      if (!isStudentKey(k)) return;
+      if (info.isTeacher) return;
+      if (!map.has(k)) map.set(k, n);
+    };
+    state.studentPosts.forEach((p) => {
+      add(p.authorInfo);
+      p.comments.forEach(add);
+    });
+    state.teacherPosts.forEach((p) => {
+      p.comments.forEach(add);
+    });
+    return map;
+  };
+
+  const renderTierClassView = () => {
+    const wrap = $('#tier-class-list');
+    if (!wrap) return;
+    const students = collectClassroomStudents();
+    if (!students.size) {
+      wrap.innerHTML =
+        '<div class="empty-board">아직 활동한 학생이 없어요. 첫 게시글의 주인공이 되어볼까요? ✨</div>';
+      return;
+    }
+    // 등급별로 그룹핑
+    const byTier = new Map();
+    TIERS.forEach((t) => byTier.set(t.key, []));
+    students.forEach((name, key) => {
+      const t = tierForUserKey(key);
+      if (!t) return;
+      byTier.get(t.key).push({ key, name });
+    });
+    byTier.forEach((arr) =>
+      arr.sort((a, b) => a.name.localeCompare(b.name, 'ko'))
+    );
+
+    wrap.innerHTML = TIERS.slice()
+      .reverse() // 챌린저 → 아이언 순으로 (높은 티어부터)
+      .map((t) => {
+        const arr = byTier.get(t.key) || [];
+        const chips = arr.length
+          ? arr
+              .map((s) => {
+                const display = personDisplay({
+                  key: s.key,
+                  name: s.name,
+                  isTeacher: false,
+                });
+                return `<span class="ctg-chip">${escapeHtml(display)}</span>`;
+              })
+              .join('')
+          : '<span class="ctg-empty">아직 없어요</span>';
+        return `
+          <div class="class-tier-group" style="--tier-bg:${t.bg}; --tier-color:${t.color};">
+            <div class="ctg-header">
+              <span class="ctg-emoji">${t.emoji}</span>
+              <span class="ctg-name">${escapeHtml(t.name)}</span>
+              <span class="ctg-count">${arr.length}명</span>
+            </div>
+            <div class="ctg-students">${chips}</div>
+          </div>`;
+      })
+      .join('');
   };
 
   // -------- 관리자 화면 --------
@@ -1610,6 +1740,12 @@
 
     // 독서 티어 페이지
     $('#open-tier-btn').addEventListener('click', () => showTierScreen());
+    $$('#tier-screen .tier-tab').forEach((b) =>
+      b.addEventListener('click', () => {
+        tierPageView = b.dataset.tierTab === 'class' ? 'class' : 'my';
+        renderTierScreen();
+      })
+    );
 
     // 관리자 페이지
     $('#open-admin-btn').addEventListener('click', () => showAdminScreen());
