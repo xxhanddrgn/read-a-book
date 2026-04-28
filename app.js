@@ -1523,42 +1523,32 @@
         '<div class="empty-board">아직 활동한 학생이 없어요. 첫 게시글의 주인공이 되어볼까요? ✨</div>';
       return;
     }
-    // 등급별로 그룹핑
-    const byTier = new Map();
-    TIERS.forEach((t) => byTier.set(t.key, []));
+    // 점수로 정렬 (점수는 화면에 표시하지 않음 — 순위 결정용으로만 사용)
+    const list = [];
     students.forEach((name, key) => {
       const t = tierForUserKey(key);
       if (!t) return;
-      byTier.get(t.key).push({ key, name });
+      list.push({ key, name, score: computeUserScore(key), tier: t });
     });
-    byTier.forEach((arr) =>
-      arr.sort((a, b) => a.name.localeCompare(b.name, 'ko'))
+    list.sort(
+      (a, b) =>
+        b.score - a.score || a.name.localeCompare(b.name, 'ko')
     );
 
-    wrap.innerHTML = TIERS.slice()
-      .reverse() // 챌린저 → 아이언 순으로 (높은 티어부터)
-      .map((t) => {
-        const arr = byTier.get(t.key) || [];
-        const chips = arr.length
-          ? arr
-              .map((s) => {
-                const display = personDisplay({
-                  key: s.key,
-                  name: s.name,
-                  isTeacher: false,
-                });
-                return `<span class="ctg-chip">${escapeHtml(display)}</span>`;
-              })
-              .join('')
-          : '<span class="ctg-empty">아직 없어요</span>';
+    const medals = ['🥇', '🥈', '🥉'];
+    wrap.innerHTML = list
+      .map((s, i) => {
+        const display = personDisplay({
+          key: s.key,
+          name: s.name,
+          isTeacher: false,
+        });
+        const rank = medals[i] || `${i + 1}.`;
         return `
-          <div class="class-tier-group" style="--tier-bg:${t.bg}; --tier-color:${t.color};">
-            <div class="ctg-header">
-              <span class="ctg-emoji">${t.emoji}</span>
-              <span class="ctg-name">${escapeHtml(t.name)}</span>
-              <span class="ctg-count">${arr.length}명</span>
-            </div>
-            <div class="ctg-students">${chips}</div>
+          <div class="class-rank-row">
+            <span class="crr-rank">${rank}</span>
+            <span class="crr-name">${escapeHtml(display)}</span>
+            ${tierBadgeHtml(s.key)}
           </div>`;
       })
       .join('');
