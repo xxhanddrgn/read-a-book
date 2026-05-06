@@ -624,6 +624,16 @@
       toast('댓글 내용 또는 이미지를 첨부해주세요.');
       return;
     }
+    // 소감 나누기 댓글은 50자 룰 (답글은 제외)
+    if (category === 'review' && !parentId) {
+      const len = nonSpaceLen(t);
+      if (len < STUDENT_REVIEW_MIN) {
+        toast(
+          `소감을 띄어쓰기·문장부호 빼고 ${STUDENT_REVIEW_MIN}자 이상 적어주세요. (현재 ${len}자)`
+        );
+        return;
+      }
+    }
     try {
       await api('POST', `/api/posts/${postId}/comments`, {
         text: t,
@@ -971,9 +981,13 @@
           : `<div class="empty-wall">${emptyMsg}</div>`;
         const placeholder =
           cat === 'review'
-            ? '이 책을 읽고 어떤 생각이 들었나요?'
+            ? '이 책을 읽고 어떤 생각이 들었는지 자세히 적어보세요. (50자 이상)'
             : '친구들과 함께 이야기 나누고 싶은 질문을 적어보세요!';
         const buttonLabel = cat === 'review' ? '💛 소감 올리기' : '❓ 질문 올리기';
+        const counterHtml =
+          cat === 'review'
+            ? `<div class="char-counter low" data-min-counter="${post.id}|${cat}">0자 / 50자 이상 (띄어쓰기·문장부호 제외)</div>`
+            : '';
         return `
           <div class="tab-panel ${cat === detailTab ? '' : 'hidden'}" data-panel="${cat}">
             <div class="postit-grid">${grid}</div>
@@ -987,6 +1001,7 @@
                 <button type="submit">${buttonLabel}</button>
               </div>
               <div class="postit-preview"></div>
+              ${counterHtml}
             </form>
           </div>`;
       };
@@ -1191,6 +1206,23 @@
           addComment(postId, ta.value, cat, image, parentId);
           ta.value = '';
         });
+
+        // 소감 나누기 댓글 라이브 카운터
+        const minCounter = form.querySelector('[data-min-counter]');
+        if (minCounter) {
+          const ta = form.querySelector('textarea');
+          const updateCounter = () => {
+            const n = nonSpaceLen(ta.value);
+            const ok = n >= STUDENT_REVIEW_MIN;
+            minCounter.textContent = ok
+              ? `${n}자 / 50자 이상 ✓ (띄어쓰기·문장부호 제외)`
+              : `${n}자 / 50자 이상 (띄어쓰기·문장부호 제외, ${STUDENT_REVIEW_MIN - n}자 더)`;
+            minCounter.classList.toggle('ok', ok);
+            minCounter.classList.toggle('low', !ok);
+          };
+          ta.addEventListener('input', updateCounter);
+          updateCounter();
+        }
 
         renderPostitPreview(form);
       });

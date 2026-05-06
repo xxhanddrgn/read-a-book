@@ -540,6 +540,16 @@ app.post('/api/posts/:id/comments', authRequired, blockGuest, (req, res) => {
     }
   }
 
+  // 선생님 '우리 반 온 책 읽기' 게시글의 소감 나누기 — 띄어쓰기·문장부호 제외 50자 이상
+  if (finalCat === 'review' && !parentId) {
+    const len = countContentChars(text);
+    if (len < 50) {
+      return res.status(400).json({
+        error: `소감을 띄어쓰기·문장부호 빼고 50자 이상 적어주세요. (현재 ${len}자)`,
+      });
+    }
+  }
+
   const cid = uid();
   db.prepare(
     `INSERT INTO comments (id,postId,text,authorKey,authorName,isTeacher,category,image,parentId,createdAt)
@@ -577,6 +587,15 @@ app.put('/api/posts/:id/comments/:cid', authRequired, blockGuest, (req, res) => 
   if (text.length > 400) return res.status(400).json({ error: '너무 긴 댓글은 줄여주세요.' });
   if (!text && !c.image) {
     return res.status(400).json({ error: '내용을 입력해주세요.' });
+  }
+  // 소감 나누기 댓글은 50자 룰 유지
+  if (c.category === 'review' && !c.parentId) {
+    const len = countContentChars(text);
+    if (len < 50) {
+      return res.status(400).json({
+        error: `소감을 띄어쓰기·문장부호 빼고 50자 이상 적어주세요. (현재 ${len}자)`,
+      });
+    }
   }
   db.prepare('UPDATE comments SET text = ? WHERE id = ?').run(text, req.params.cid);
   res.json({ ok: true });
