@@ -1346,43 +1346,66 @@
     });
   };
 
-  // -------- 책플루언서 (명예의 전당) --------
-  const computeRanking = () => {
+  // -------- 이번 주 책플루언서 --------
+  // 이번 주 = 가장 최근 월요일 00:00 ~ 그 주 금요일 23:59:59.999
+  const getWeekRange = (now = new Date()) => {
+    const d = new Date(now);
+    d.setHours(0, 0, 0, 0);
+    const day = d.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+    const monday = new Date(d);
+    monday.setDate(d.getDate() + diffToMonday);
+    const friday = new Date(monday);
+    friday.setDate(monday.getDate() + 4);
+    friday.setHours(23, 59, 59, 999);
+    return { start: monday.getTime(), end: friday.getTime(), monday, friday };
+  };
+
+  const formatWeekRange = (range) => {
+    const fmt = (d) => `${d.getMonth() + 1}월 ${d.getDate()}일`;
+    return `${fmt(range.monday)}(월) ~ ${fmt(range.friday)}(금)`;
+  };
+
+  // 이번 주(월~금) 활동만 집계. 학생 게시글 1개 이상 + 댓글(생각·질문 둘 다 포함, 답글 제외) 3개 이상 = 자격
+  const computeWeeklyInfluencers = () => {
+    const range = getWeekRange();
+    const within = (ts) => ts >= range.start && ts <= range.end;
     const map = new Map();
-    const since = Number(state.rankingResetAt) || 0;
     const bump = (k, name, isTeacher, dPosts, dComments) => {
-      if (isTeacher) return;
+      if (isTeacher || !isStudentKey(k)) return;
       if (!map.has(k)) map.set(k, { key: k, name, posts: 0, comments: 0 });
       const o = map.get(k);
       o.posts += dPosts;
       o.comments += dComments;
     };
     state.studentPosts.forEach((p) => {
-      if (p.createdAt >= since) {
+      if (within(p.createdAt)) {
         bump(p.authorInfo.key, p.authorInfo.name, p.authorInfo.isTeacher, 1, 0);
       }
       p.comments.forEach((c) => {
-        if (c.createdAt >= since) {
+        // 답글(parentId 있음)은 제외 — 최상위 댓글만 카운트
+        if (within(c.createdAt) && !c.parentId) {
           bump(c.authorKey, c.authorName, c.isTeacher, 0, 1);
         }
       });
     });
     state.teacherPosts.forEach((p) => {
       p.comments.forEach((c) => {
-        if (c.createdAt >= since) {
+        if (within(c.createdAt) && !c.parentId) {
           bump(c.authorKey, c.authorName, c.isTeacher, 0, 1);
         }
       });
     });
-    // 게시글 수 우선, 동률이면 댓글 수, 그래도 동률이면 이름
-    const list = Array.from(map.values());
-    list.sort(
-      (a, b) =>
-        b.posts - a.posts ||
-        b.comments - a.comments ||
-        a.name.localeCompare(b.name, 'ko')
-    );
-    return list;
+    const all = Array.from(map.values());
+    const qualified = all
+      .filter((o) => o.posts >= 1 && o.comments >= 3)
+      .sort(
+        (a, b) =>
+          b.posts - a.posts ||
+          b.comments - a.comments ||
+          a.name.localeCompare(b.name, 'ko')
+      );
+    return { range, qualified, all };
   };
 
   const MEDAL = { 1: '🥇', 2: '🥈', 3: '🥉' };
@@ -1406,26 +1429,37 @@
   };
 
   const renderRanking = () => {
-    const list = computeRanking();
+    const { range, qualified } = computeWeeklyInfluencers();
     const podium = $('#ranking-podium');
     const ol = $('#ranking-list');
+    const rangeEl = $('#ranking-week-range');
+    if (rangeEl) rangeEl.textContent = formatWeekRange(range);
 
-    if (!list.length) {
+    if (!qualified.length) {
       podium.innerHTML = `
         <div class="podium-empty-block">
           <div class="podium-empty-icon">🏆</div>
-          <div class="podium-empty-msg">아직 순위가 없어요</div>
-          <div class="podium-empty-sub">첫 게시글의 주인공이 되어보세요!</div>
+          <div class="podium-empty-msg">아직 이번 주 책플루언서가 없어요</div>
+          <div class="podium-empty-sub">새 책 올리기 1개 + 댓글 3개 이상으로 도전!</div>
         </div>`;
       ol.innerHTML = '';
       return;
     }
 
-    // 단상은 2위 - 1위 - 3위 순서로 배치
-    podium.innerHTML =
-      podiumSpot(2, list[1]) + podiumSpot(1, list[0]) + podiumSpot(3, list[2]);
+    // 단상은 자격자가 3명 이상일 때만, 2위 - 1위 - 3위 순서로 배치
+    if (qualified.length >= 3) {
+      podium.innerHTML =
+        podiumSpot(2, qualified[1]) +
+        podiumSpot(1, qualified[0]) +
+        podiumSpot(3, qualified[2]);
+    } else if (qualified.length === 2) {
+      podium.innerHTML = podiumSpot(2, qualified[1]) + podiumSpot(1, qualified[0]);
+    } else {
+      podium.innerHTML = podiumSpot(1, qualified[0]);
+    }
 
-    const rest = list.slice(3, 20);
+    // 단상에 올라간 학생 이외의 자격자는 아래 리스트
+    const rest = qualified.slice(3);
     ol.innerHTML = rest
       .map((o, i) => {
         const name = personDisplay({ key: o.key, name: o.name, isTeacher: false });
@@ -1648,7 +1682,7 @@
   }
 
   async function onAdminResetRanking() {
-    if (!confirm('우리 반 책플루언서 점수를 초기화할까요?\n(게시글은 그대로 남고, 이 시점 이후 활동만 점수에 반영됩니다.)')) return;
+    if (!confirm('독서 티어 점수를 초기화할까요?\n(게시글은 그대로 남고, 이 시점 이후 활동만 점수에 반영됩니다.)')) return;
     try {
       await api('POST', '/api/admin/ranking/reset');
       toast('책플루언서 점수를 초기화했어요.');

@@ -92,9 +92,9 @@
         <span class="brand-name">우리 반 책장</span>
       </div>
 
-      <button id="influencer-banner" class="influencer-banner" title="우리 반 책플루언서 보기">
+      <button id="influencer-banner" class="influencer-banner" title="이번 주 책플루언서 보기">
         <span class="crown">👑</span>
-        <span class="banner-label">우리 반 책플루언서</span>
+        <span class="banner-label">이번 주 책플루언서</span>
       </button>
 
       <div class="user-area">
@@ -230,13 +230,18 @@
   <section id="ranking-screen" class="screen page hidden">
     <header class="page-topbar ranking-topbar">
       <button class="back-btn" data-back="ranking">← 돌아가기</button>
-      <span class="page-topbar-title">👑 우리 반 책플루언서</span>
+      <span class="page-topbar-title">👑 이번 주 책플루언서</span>
       <span class="page-topbar-spacer"></span>
     </header>
     <div class="page-body">
       <div class="ranking-hero">
         <div class="ranking-hero-emoji">🏆</div>
-        <h2 class="ranking-hero-title">우리 반 책플루언서</h2>
+        <h2 class="ranking-hero-title">이번 주 책플루언서</h2>
+        <p id="ranking-week-range" class="ranking-hero-sub"></p>
+      </div>
+      <div class="ranking-criteria">
+        ✨ 선정 기준: <b>새 책 올리기 1개</b> + <b>댓글 3개 이상</b> (월~금)
+        <span class="criteria-sub">생각 나누기 · 질문 나누기 모두 댓글로 인정 (대댓글 제외)</span>
       </div>
       <div id="ranking-podium" class="ranking-podium"></div>
       <ol id="ranking-list" class="ranking-list"></ol>
@@ -282,9 +287,10 @@
     </header>
     <div class="page-body admin-body">
       <section class="admin-section">
-        <h3>👑 우리 반 책플루언서 점수 초기화</h3>
+        <h3>🎖 독서 티어 점수 초기화</h3>
         <p class="admin-desc">
-          이 시점 이후로 올라온 게시글·댓글만 점수에 반영됩니다. 게시글은 그대로 남아있어요.
+          이 시점 이후로 올라온 게시글·댓글·좋아요만 독서 티어 점수에 반영됩니다.
+          게시글은 그대로 남아있어요. (이번 주 책플루언서는 매주 월~금 단위로 자동 갱신되므로 영향 없음)
         </p>
         <div class="admin-actions">
           <span id="admin-ranking-info" class="admin-info">불러오는 중…</span>
