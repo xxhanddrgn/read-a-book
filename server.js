@@ -669,6 +669,12 @@ app.post('/api/admin/ranking/reset', authRequired, adminRequired, (_req, res) =>
   res.json({ ok: true, rankingResetAt: Number(getSetting('ranking_reset_at')) });
 });
 
+// 초기화 취소 — ranking_reset_at 을 0 으로 되돌려 모든 활동을 다시 점수에 반영
+app.post('/api/admin/ranking/clear-reset', authRequired, adminRequired, (_req, res) => {
+  setSetting('ranking_reset_at', '0');
+  res.json({ ok: true, rankingResetAt: 0 });
+});
+
 app.use('/api', (_req, res) => res.status(404).json({ error: 'API not found' }));
 
 // ---------- 정적 파일 ----------

@@ -2438,3 +2438,22 @@ body.guest-mode .post-meta {
   color: var(--ink-soft);
   margin-top: 4px;
 }
+
+/* 관리자 사용자 목록 — 통계/티어 */
+.admin-user-info {
+  flex-wrap: wrap;
+}
+.admin-user-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+}
+.aus-detail {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+@media (max-width: 768px) {
+  .aus-detail { font-size: 0.72rem; white-space: normal; }
+}

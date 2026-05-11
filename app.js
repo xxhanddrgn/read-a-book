@@ -1646,12 +1646,22 @@
       return;
     }
     wrap.innerHTML = adminUsers
-      .map(
-        (u) => `
+      .map((u) => {
+        const isStud = isStudentKey(u.key);
+        const stats = isStud ? computeUserStats(u.key) : null;
+        const score = isStud ? computeUserScore(u.key) : null;
+        const statsHtml = isStud
+          ? `<span class="admin-user-stats">
+              ${tierBadgeHtml(u.key)}
+              <span class="aus-detail">글 ${stats.posts} · 댓글 ${stats.comments} · 좋아요 ${stats.likes} · ${score % 1 === 0 ? score : score.toFixed(1)}점</span>
+             </span>`
+          : '';
+        return `
         <div class="admin-user-row" data-key="${escapeHtml(u.key)}">
           <div class="admin-user-info">
             <span class="admin-user-tag">${escapeHtml(userTagLabel(u))}</span>
             <span class="admin-user-name">${escapeHtml(u.name)}</span>
+            ${statsHtml}
           </div>
           <div class="admin-user-actions">
             <button class="btn-ghost" data-admin-pw="${escapeHtml(u.key)}">비번 재설정</button>
@@ -1659,8 +1669,8 @@
               ? `<button class="btn-danger-text" data-admin-del-user="${escapeHtml(u.key)}">계정 삭제</button>`
               : ''}
           </div>
-        </div>`
-      )
+        </div>`;
+      })
       .join('');
 
     wrap.querySelectorAll('[data-admin-pw]').forEach((b) =>
@@ -1688,6 +1698,20 @@
       toast('책플루언서 점수를 초기화했어요.');
       await refreshState();
       renderAdminInfo();
+      await loadAdminUsers();
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+
+  async function onAdminClearReset() {
+    if (!confirm('독서 티어 초기화 시점을 취소하시겠어요?\n그동안 빠져있던 모든 활동이 다시 점수에 반영됩니다.')) return;
+    try {
+      await api('POST', '/api/admin/ranking/clear-reset');
+      toast('초기화를 취소했어요. 학생들의 활동이 다시 반영됩니다.');
+      await refreshState();
+      renderAdminInfo();
+      await loadAdminUsers();
     } catch (err) {
       toast(err.message);
     }
@@ -1806,6 +1830,7 @@
     // 관리자 페이지
     $('#open-admin-btn').addEventListener('click', () => showAdminScreen());
     $('#admin-reset-ranking').addEventListener('click', onAdminResetRanking);
+    $('#admin-clear-reset').addEventListener('click', onAdminClearReset);
     $('#admin-reset-posts').addEventListener('click', onAdminResetAllPosts);
     $('#admin-go-board').addEventListener('click', () => backToApp());
 
