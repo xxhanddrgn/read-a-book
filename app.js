@@ -171,8 +171,17 @@
     return s.posts * 10 + s.comments * 2 + s.likes * 0.5;
   };
 
-  const tierForScore = (score) =>
-    TIERS.find((t) => score >= t.min && score <= t.max) || TIERS[0];
+  // score 에 해당하는 가장 높은 티어를 반환. 표(min~max)는 정수 단위지만
+  // 실제 점수는 0.5 단위로 떨어질 수 있어서 다음 티어의 min 으로 끊는다.
+  // 예) 49.5 → bronze (실버 min=50 직전)
+  const tierForScore = (score) => {
+    let result = TIERS[0];
+    for (const t of TIERS) {
+      if (score >= t.min) result = t;
+      else break;
+    }
+    return result;
+  };
 
   const tierForUserKey = (uKey) =>
     isStudentKey(uKey) ? tierForScore(computeUserScore(uKey)) : null;
