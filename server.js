@@ -103,6 +103,16 @@ const userCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
 if (!userCols.includes('isAdmin')) {
   db.exec("ALTER TABLE users ADD COLUMN isAdmin INTEGER NOT NULL DEFAULT 0");
 }
+// 보너스/조정 컬럼 — 관리자가 학생 활동량을 직접 가감
+if (!userCols.includes('bonusPosts')) {
+  db.exec("ALTER TABLE users ADD COLUMN bonusPosts INTEGER NOT NULL DEFAULT 0");
+}
+if (!userCols.includes('bonusComments')) {
+  db.exec("ALTER TABLE users ADD COLUMN bonusComments INTEGER NOT NULL DEFAULT 0");
+}
+if (!userCols.includes('bonusLikes')) {
+  db.exec("ALTER TABLE users ADD COLUMN bonusLikes INTEGER NOT NULL DEFAULT 0");
+}
 
 // 앱 설정 테이블 (책플루언서 초기화 시점 등)
 db.exec(`
@@ -350,7 +360,25 @@ const buildPostsResponse = () => {
     teacherPosts: enriched.filter((p) => p.target === 'teacher'),
     studentPosts: enriched.filter((p) => p.target === 'student'),
     rankingResetAt: Number(getSetting('ranking_reset_at')) || 0,
+    userBonuses: buildBonusMap(),
   };
+};
+
+const buildBonusMap = () => {
+  const out = {};
+  db.prepare(
+    `SELECT key, bonusPosts, bonusComments, bonusLikes FROM users
+       WHERE bonusPosts != 0 OR bonusComments != 0 OR bonusLikes != 0`
+  )
+    .all()
+    .forEach((r) => {
+      out[r.key] = {
+        posts: r.bonusPosts || 0,
+        comments: r.bonusComments || 0,
+        likes: r.bonusLikes || 0,
+      };
+    });
+  return out;
 };
 
 app.get('/api/state', authRequired, (_req, res) => {
@@ -607,7 +635,8 @@ app.put('/api/posts/:id/comments/:cid', authRequired, blockGuest, (req, res) => 
 app.get('/api/admin/users', authRequired, adminRequired, (_req, res) => {
   const rows = db
     .prepare(
-      `SELECT key, name, grade, classNo, number, isTeacher, isAdmin, createdAt
+      `SELECT key, name, grade, classNo, number, isTeacher, isAdmin,
+              bonusPosts, bonusComments, bonusLikes, createdAt
          FROM users
         WHERE key NOT LIKE 'GUEST-%'
         ORDER BY isAdmin DESC, isTeacher DESC, grade, classNo, number, name`
@@ -622,9 +651,32 @@ app.get('/api/admin/users', authRequired, adminRequired, (_req, res) => {
       number: u.number,
       isTeacher: !!u.isTeacher,
       isAdmin: !!u.isAdmin,
+      bonusPosts: u.bonusPosts || 0,
+      bonusComments: u.bonusComments || 0,
+      bonusLikes: u.bonusLikes || 0,
       createdAt: u.createdAt,
     })),
   });
+});
+
+// 학생 활동량 보너스/조정 — posts/comments/likes 별로 ±정수
+app.post('/api/admin/users/bonus', authRequired, adminRequired, (req, res) => {
+  const { key } = req.body || {};
+  if (!key) return res.status(400).json({ error: '대상 사용자가 필요합니다.' });
+  const target = db.prepare('SELECT key FROM users WHERE key = ?').get(key);
+  if (!target) return res.status(404).json({ error: '사용자를 찾을 수 없습니다.' });
+  const clamp = (n) => {
+    const v = Math.trunc(Number(n));
+    if (!Number.isFinite(v)) return 0;
+    return Math.max(-9999, Math.min(9999, v));
+  };
+  const p = clamp(req.body?.posts ?? 0);
+  const c = clamp(req.body?.comments ?? 0);
+  const l = clamp(req.body?.likes ?? 0);
+  db.prepare(
+    'UPDATE users SET bonusPosts = ?, bonusComments = ?, bonusLikes = ? WHERE key = ?'
+  ).run(p, c, l, key);
+  res.json({ ok: true, bonusPosts: p, bonusComments: c, bonusLikes: l });
 });
 
 // 사용자 비밀번호 재설정

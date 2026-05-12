@@ -134,7 +134,7 @@
   // 학생 키 (학년-반-번호-이름)만 티어 적용. 교사/관리자/게스트는 제외.
   const isStudentKey = (k) => typeof k === 'string' && /^\d/.test(k);
 
-  // userKey 의 활동량 (rankingResetAt 이후만 카운트)
+  // userKey 의 활동량 (rankingResetAt 이후만 카운트) — 보너스(관리자 조정) 가산
   // likes = 본인이 '누른' 좋아요 수 (게시글 작성자 기준이 아니라 좋아요를 누른 사용자 기준)
   const computeUserStats = (uKey) => {
     const since = Number(state.rankingResetAt) || 0;
@@ -152,7 +152,18 @@
         likes++;
       }
     });
-    return { posts, comments, likes };
+    // 관리자 보너스/조정 가산 (음수도 허용하되 합산값은 0 미만으로 가지 않음)
+    const b = (state.userBonuses && state.userBonuses[uKey]) || null;
+    const bPosts = b?.posts || 0;
+    const bComments = b?.comments || 0;
+    const bLikes = b?.likes || 0;
+    return {
+      posts: Math.max(0, posts + bPosts),
+      comments: Math.max(0, comments + bComments),
+      likes: Math.max(0, likes + bLikes),
+      raw: { posts, comments, likes },
+      bonus: { posts: bPosts, comments: bComments, likes: bLikes },
+    };
   };
 
   const computeUserScore = (uKey) => {
@@ -1622,6 +1633,7 @@
 
   // -------- 관리자 화면 --------
   let adminUsers = [];
+  const editingBonusKeys = new Set(); // 활동 조정 인라인 편집 중인 사용자 key
 
   const renderAdminInfo = () => {
     const since = Number(state.rankingResetAt) || 0;
@@ -1648,27 +1660,59 @@
     wrap.innerHTML = adminUsers
       .map((u) => {
         const isStud = isStudentKey(u.key);
-        const stats = isStud ? computeUserStats(u.key) : null;
-        const score = isStud ? computeUserScore(u.key) : null;
-        const statsHtml = isStud
-          ? `<span class="admin-user-stats">
+        const isEditing = editingBonusKeys.has(u.key);
+        let statsHtml = '';
+        if (isStud) {
+          const stats = computeUserStats(u.key);
+          const score = computeUserScore(u.key);
+          const fmtCell = (final, raw, bonus) => {
+            if (bonus === 0) return `${final}`;
+            const sign = bonus > 0 ? '+' : '';
+            return `${final} <span class="aus-bonus">(${raw}${sign}${bonus})</span>`;
+          };
+          statsHtml = `
+            <span class="admin-user-stats">
               ${tierBadgeHtml(u.key)}
-              <span class="aus-detail">글 ${stats.posts} · 댓글 ${stats.comments} · 좋아요 ${stats.likes} · ${score % 1 === 0 ? score : score.toFixed(1)}점</span>
-             </span>`
-          : '';
+              <span class="aus-detail">
+                글 ${fmtCell(stats.posts, stats.raw.posts, stats.bonus.posts)} ·
+                댓글 ${fmtCell(stats.comments, stats.raw.comments, stats.bonus.comments)} ·
+                좋아요 ${fmtCell(stats.likes, stats.raw.likes, stats.bonus.likes)} ·
+                ${score % 1 === 0 ? score : score.toFixed(1)}점
+              </span>
+            </span>`;
+        }
+        const editorHtml =
+          isStud && isEditing
+            ? `<div class="bonus-editor">
+                <span class="be-label">활동 보너스 (음수 가능):</span>
+                <label>글
+                  <input type="number" step="1" data-bonus-input="posts" value="${u.bonusPosts || 0}" />
+                </label>
+                <label>댓글
+                  <input type="number" step="1" data-bonus-input="comments" value="${u.bonusComments || 0}" />
+                </label>
+                <label>좋아요
+                  <input type="number" step="1" data-bonus-input="likes" value="${u.bonusLikes || 0}" />
+                </label>
+                <button class="pt-save" data-bonus-save="${escapeHtml(u.key)}">저장</button>
+                <button class="pt-cancel" data-bonus-cancel="${escapeHtml(u.key)}">취소</button>
+              </div>`
+            : '';
         return `
-        <div class="admin-user-row" data-key="${escapeHtml(u.key)}">
+        <div class="admin-user-row ${isEditing ? 'editing' : ''}" data-key="${escapeHtml(u.key)}">
           <div class="admin-user-info">
             <span class="admin-user-tag">${escapeHtml(userTagLabel(u))}</span>
             <span class="admin-user-name">${escapeHtml(u.name)}</span>
             ${statsHtml}
           </div>
           <div class="admin-user-actions">
+            ${isStud && !isEditing ? `<button class="btn-ghost" data-bonus-edit="${escapeHtml(u.key)}">활동 조정</button>` : ''}
             <button class="btn-ghost" data-admin-pw="${escapeHtml(u.key)}">비번 재설정</button>
             ${u.key !== session.user.key
               ? `<button class="btn-danger-text" data-admin-del-user="${escapeHtml(u.key)}">계정 삭제</button>`
               : ''}
           </div>
+          ${editorHtml}
         </div>`;
       })
       .join('');
@@ -1679,7 +1723,45 @@
     wrap.querySelectorAll('[data-admin-del-user]').forEach((b) =>
       b.addEventListener('click', () => onAdminDeleteUser(b.dataset.adminDelUser))
     );
+    wrap.querySelectorAll('[data-bonus-edit]').forEach((b) =>
+      b.addEventListener('click', () => {
+        editingBonusKeys.add(b.dataset.bonusEdit);
+        renderAdminUsers();
+      })
+    );
+    wrap.querySelectorAll('[data-bonus-cancel]').forEach((b) =>
+      b.addEventListener('click', () => {
+        editingBonusKeys.delete(b.dataset.bonusCancel);
+        renderAdminUsers();
+      })
+    );
+    wrap.querySelectorAll('[data-bonus-save]').forEach((b) =>
+      b.addEventListener('click', () => onAdminSaveBonus(b.dataset.bonusSave))
+    );
   };
+
+  async function onAdminSaveBonus(key) {
+    const row = $(`.admin-user-row[data-key="${CSS.escape(key)}"]`);
+    if (!row) return;
+    const get = (which) => {
+      const inp = row.querySelector(`[data-bonus-input="${which}"]`);
+      return Math.trunc(Number(inp?.value || 0));
+    };
+    try {
+      await api('POST', '/api/admin/users/bonus', {
+        key,
+        posts: get('posts'),
+        comments: get('comments'),
+        likes: get('likes'),
+      });
+      editingBonusKeys.delete(key);
+      toast('활동 보너스를 저장했어요. 티어에 반영됩니다.');
+      await refreshState();
+      await loadAdminUsers();
+    } catch (err) {
+      toast(err.message);
+    }
+  }
 
   async function loadAdminUsers() {
     try {

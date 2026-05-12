@@ -2457,3 +2457,46 @@ body.guest-mode .post-meta {
 @media (max-width: 768px) {
   .aus-detail { font-size: 0.72rem; white-space: normal; }
 }
+
+/* 활동 보너스 표시 */
+.aus-bonus {
+  color: var(--primary);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+.admin-user-row.editing {
+  background: #fffaf0;
+  border-color: var(--primary);
+}
+.bonus-editor {
+  flex: 1 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #ffd591;
+}
+.be-label {
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+.bonus-editor label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.88rem;
+  color: var(--ink);
+}
+.bonus-editor input[type='number'] {
+  width: 70px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 2px solid #ffd591;
+  background: #fffefb;
+  font-family: 'Gowun Dodum', sans-serif;
+  font-size: 0.92rem;
+  outline: none;
+}
+.bonus-editor input:focus { border-color: var(--primary); }
