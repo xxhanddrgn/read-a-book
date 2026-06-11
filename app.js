@@ -128,7 +128,7 @@
     diamond:     '게시글 25개 + 댓글 50개 + 좋아요 100개',
     master:      '게시글 35개 + 댓글 70개 + 좋아요 140개',
     grandmaster: '게시글 50개 + 댓글 100개 + 좋아요 200개',
-    challenger:  '상위 1~2명만 도달 가능',
+    challenger:  '상위 1~2명만 도달 가능 (이번 주 책플루언서가 되어야 유지, 아니면 그랜드마스터로 일시 강등)',
   };
 
   // 학생 키 (학년-반-번호-이름)만 티어 적용. 교사/관리자/게스트는 제외.
@@ -183,8 +183,34 @@
     return result;
   };
 
-  const tierForUserKey = (uKey) =>
-    isStudentKey(uKey) ? tierForScore(computeUserScore(uKey)) : null;
+  // 이번 주 책플루언서 자격자 keys 캐시 — state 가 새로 들어오면 자동 무효화.
+  // tierForUserKey 가 매 렌더 수십 번 호출되므로 매번 재계산하지 않도록 메모이즈.
+  let _influencerCacheState = null;
+  let _influencerCacheKeys = new Set();
+  const getCurrentInfluencerKeys = () => {
+    if (_influencerCacheState !== state) {
+      _influencerCacheState = state;
+      try {
+        const { qualified } = computeWeeklyInfluencers();
+        _influencerCacheKeys = new Set(qualified.map((q) => q.key));
+      } catch {
+        _influencerCacheKeys = new Set();
+      }
+    }
+    return _influencerCacheKeys;
+  };
+
+  // 챌린저 강등 규칙 — 900+ 이지만 이번 주 책플루언서가 아니면 그랜드마스터로 일시 강등
+  const grandmasterTier = TIERS.find((t) => t.key === 'grandmaster');
+  const tierForUserKey = (uKey) => {
+    if (!isStudentKey(uKey)) return null;
+    const score = computeUserScore(uKey);
+    let t = tierForScore(score);
+    if (t.key === 'challenger' && !getCurrentInfluencerKeys().has(uKey)) {
+      t = grandmasterTier || t;
+    }
+    return t;
+  };
 
   // 학생 이름 옆에 붙는 티어 배지 HTML
   const tierBadgeHtml = (uKey) => {
