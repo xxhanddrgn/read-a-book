@@ -2500,3 +2500,36 @@ body.guest-mode .post-meta {
   outline: none;
 }
 .bonus-editor input:focus { border-color: var(--primary); }
+
+/* 책플루언서 주별 네비게이션 */
+#ranking-week-range {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.week-nav {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+  font-size: 1.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.12s, transform 0.08s;
+}
+.week-nav:hover:not([disabled]) {
+  background: rgba(255, 255, 255, 0.45);
+  transform: translateY(-1px);
+}
+.week-nav[disabled] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.week-range-text {
+  white-space: nowrap;
+}

@@ -20,6 +20,7 @@
   let boardPage = 1; // 학생 게시판 페이지 (20개 단위)
   const POSTS_PER_PAGE = 20;
   let tierPageView = 'my'; // 'my' | 'class'
+  let weekViewOffset = 0; // 0=이번 주, -1=지난 주, ...
   let pollTimer = null;
   let anonMode = localStorage.getItem(ANON_KEY) === '1';
   const aliasMap = new Map(); // authorKey → '학생 N'
@@ -191,7 +192,8 @@
     if (_influencerCacheState !== state) {
       _influencerCacheState = state;
       try {
-        const { qualified } = computeWeeklyInfluencers();
+        // 챌린저 강등 규칙은 항상 '이번 주' (offset=0) 책플루언서를 기준으로 한다
+        const { qualified } = computeWeeklyInfluencers(0);
         _influencerCacheKeys = new Set(qualified.map((q) => q.key));
       } catch {
         _influencerCacheKeys = new Set();
@@ -360,6 +362,7 @@
     showOnly('#detail-screen');
   };
   const showRankingScreen = () => {
+    weekViewOffset = 0; // 페이지에 들어올 때마다 이번 주로 초기화
     renderRanking();
     showOnly('#ranking-screen');
   };
@@ -1392,19 +1395,25 @@
     });
   };
 
-  // -------- 이번 주 책플루언서 --------
-  // 이번 주 = 가장 최근 월요일 00:00 ~ 그 주 금요일 23:59:59.999
-  const getWeekRange = (now = new Date()) => {
+  // -------- 책플루언서 --------
+  // 어느 주의 월요일 00:00 ~ 그 주 금요일 23:59:59.999. offset=0=이번 주, -1=지난 주, ...
+  const getWeekRange = (offset = 0, now = new Date()) => {
     const d = new Date(now);
     d.setHours(0, 0, 0, 0);
     const day = d.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
     const diffToMonday = day === 0 ? -6 : 1 - day;
     const monday = new Date(d);
-    monday.setDate(d.getDate() + diffToMonday);
+    monday.setDate(d.getDate() + diffToMonday + offset * 7);
     const friday = new Date(monday);
     friday.setDate(monday.getDate() + 4);
     friday.setHours(23, 59, 59, 999);
-    return { start: monday.getTime(), end: friday.getTime(), monday, friday };
+    return {
+      start: monday.getTime(),
+      end: friday.getTime(),
+      monday,
+      friday,
+      offset,
+    };
   };
 
   const formatWeekRange = (range) => {
@@ -1412,9 +1421,9 @@
     return `${fmt(range.monday)}(월) ~ ${fmt(range.friday)}(금)`;
   };
 
-  // 이번 주(월~금) 활동만 집계. 학생 게시글 1개 이상 + 댓글(생각·질문 둘 다 포함, 답글 제외) 3개 이상 = 자격
-  const computeWeeklyInfluencers = () => {
-    const range = getWeekRange();
+  // 어느 주(월~금) 활동만 집계. 학생 게시글 1개 이상 + 댓글(생각·질문 둘 다 포함, 답글 제외) 3개 이상 = 자격
+  const computeWeeklyInfluencers = (offset = 0) => {
+    const range = getWeekRange(offset);
     const within = (ts) => ts >= range.start && ts <= range.end;
     const map = new Map();
     const bump = (k, name, isTeacher, dPosts, dComments) => {
@@ -1475,18 +1484,60 @@
   };
 
   const renderRanking = () => {
-    const { range, qualified } = computeWeeklyInfluencers();
+    const { range, qualified } = computeWeeklyInfluencers(weekViewOffset);
     const podium = $('#ranking-podium');
     const ol = $('#ranking-list');
+    const titleEl = $('.ranking-hero-title');
     const rangeEl = $('#ranking-week-range');
-    if (rangeEl) rangeEl.textContent = formatWeekRange(range);
+
+    // 히어로 제목을 오프셋에 맞게 갱신
+    if (titleEl) {
+      titleEl.textContent =
+        weekViewOffset === 0
+          ? '이번 주 책플루언서'
+          : weekViewOffset === -1
+          ? '지난 주 책플루언서'
+          : `${-weekViewOffset}주 전 책플루언서`;
+    }
+
+    // 좌우 네비게이션 + 주 표기
+    if (rangeEl) {
+      const prevDisabled = ''; // 과거는 항상 가능
+      const nextDisabled = weekViewOffset >= 0 ? 'disabled' : '';
+      rangeEl.innerHTML = `
+        <button class="week-nav" data-week-nav="prev" title="지난 주" ${prevDisabled}>←</button>
+        <span class="week-range-text">${escapeHtml(formatWeekRange(range))}</span>
+        <button class="week-nav" data-week-nav="next" title="다음 주" ${nextDisabled}>→</button>
+      `;
+      rangeEl
+        .querySelector('[data-week-nav="prev"]')
+        ?.addEventListener('click', () => {
+          weekViewOffset -= 1;
+          renderRanking();
+        });
+      rangeEl
+        .querySelector('[data-week-nav="next"]')
+        ?.addEventListener('click', () => {
+          if (weekViewOffset >= 0) return;
+          weekViewOffset += 1;
+          renderRanking();
+        });
+    }
 
     if (!qualified.length) {
+      const emptyMsg =
+        weekViewOffset === 0
+          ? '아직 이번 주 책플루언서가 없어요'
+          : '이 주에는 책플루언서가 없었어요';
+      const emptySub =
+        weekViewOffset === 0
+          ? '새 책 올리기 1개 + 댓글 3개 이상으로 도전!'
+          : `${formatWeekRange(range)} 활동 기준`;
       podium.innerHTML = `
         <div class="podium-empty-block">
           <div class="podium-empty-icon">🏆</div>
-          <div class="podium-empty-msg">아직 이번 주 책플루언서가 없어요</div>
-          <div class="podium-empty-sub">새 책 올리기 1개 + 댓글 3개 이상으로 도전!</div>
+          <div class="podium-empty-msg">${escapeHtml(emptyMsg)}</div>
+          <div class="podium-empty-sub">${escapeHtml(emptySub)}</div>
         </div>`;
       ol.innerHTML = '';
       return;
