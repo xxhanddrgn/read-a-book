@@ -113,6 +113,10 @@ if (!userCols.includes('bonusComments')) {
 if (!userCols.includes('bonusLikes')) {
   db.exec("ALTER TABLE users ADD COLUMN bonusLikes INTEGER NOT NULL DEFAULT 0");
 }
+// 챌린저 자격 영구 플래그 — 한 번 900점을 넘으면 1, 그 후로는 매주 책플루언서 여부에 따라 챌린저/GM 토글
+if (!userCols.includes('earnedChallenger')) {
+  db.exec("ALTER TABLE users ADD COLUMN earnedChallenger INTEGER NOT NULL DEFAULT 0");
+}
 
 // 앱 설정 테이블 (책플루언서 초기화 시점 등)
 db.exec(`
@@ -361,6 +365,7 @@ const buildPostsResponse = () => {
     studentPosts: enriched.filter((p) => p.target === 'student'),
     rankingResetAt: Number(getSetting('ranking_reset_at')) || 0,
     userBonuses: buildBonusMap(),
+    earnedChallengerKeys: refreshEarnedChallenger(),
   };
 };
 
@@ -379,6 +384,73 @@ const buildBonusMap = () => {
       };
     });
   return out;
+};
+
+// 학생 학년-반-번호-이름 키 만 학생으로 인정 (교사/관리자/게스트 제외)
+const isStudentLikeKey = (k) => typeof k === 'string' && /^\d/.test(k);
+
+// 클라이언트와 똑같은 공식으로 모든 학생 점수를 계산.
+// 한 번이라도 900점 넘은 학생을 earnedChallenger=1 로 영구 마킹.
+const refreshEarnedChallenger = () => {
+  const since = Number(getSetting('ranking_reset_at')) || 0;
+  const stats = new Map(); // key → {posts, comments, likes}
+  const ensure = (k) => {
+    if (!isStudentLikeKey(k)) return null;
+    if (!stats.has(k)) stats.set(k, { posts: 0, comments: 0, likes: 0 });
+    return stats.get(k);
+  };
+  db.prepare("SELECT authorKey, createdAt FROM posts WHERE target='student'")
+    .all()
+    .forEach((p) => {
+      if (p.createdAt < since) return;
+      const o = ensure(p.authorKey);
+      if (o) o.posts++;
+    });
+  db.prepare('SELECT authorKey, createdAt FROM comments')
+    .all()
+    .forEach((c) => {
+      if (c.createdAt < since) return;
+      const o = ensure(c.authorKey);
+      if (o) o.comments++;
+    });
+  db.prepare(
+    `SELECT l.userKey, p.createdAt FROM likes l
+       JOIN posts p ON l.postId = p.id`
+  )
+    .all()
+    .forEach((l) => {
+      if (l.createdAt < since) return;
+      const o = ensure(l.userKey);
+      if (o) o.likes++;
+    });
+
+  // 보너스 가산 후 점수 계산
+  const bonuses = db
+    .prepare('SELECT key, bonusPosts, bonusComments, bonusLikes FROM users')
+    .all();
+  const earners = [];
+  bonuses.forEach((u) => {
+    if (!isStudentLikeKey(u.key)) return;
+    const s = stats.get(u.key) || { posts: 0, comments: 0, likes: 0 };
+    const p = Math.max(0, s.posts + (u.bonusPosts || 0));
+    const c = Math.max(0, s.comments + (u.bonusComments || 0));
+    const l = Math.max(0, s.likes + (u.bonusLikes || 0));
+    const score = p * 10 + c * 2 + l * 0.5;
+    if (score >= 900) earners.push(u.key);
+  });
+
+  if (earners.length) {
+    const upd = db.prepare(
+      'UPDATE users SET earnedChallenger = 1 WHERE key = ? AND earnedChallenger = 0'
+    );
+    const tx = db.transaction((keys) => keys.forEach((k) => upd.run(k)));
+    tx(earners);
+  }
+
+  return db
+    .prepare('SELECT key FROM users WHERE earnedChallenger = 1')
+    .all()
+    .map((r) => r.key);
 };
 
 app.get('/api/state', authRequired, (_req, res) => {
@@ -677,6 +749,19 @@ app.post('/api/admin/users/bonus', authRequired, adminRequired, (req, res) => {
     'UPDATE users SET bonusPosts = ?, bonusComments = ?, bonusLikes = ? WHERE key = ?'
   ).run(p, c, l, key);
   res.json({ ok: true, bonusPosts: p, bonusComments: c, bonusLikes: l });
+});
+
+// 챌린저 영구 자격 토글 — 잘못 부여된 경우 관리자가 취소 가능
+app.post('/api/admin/users/earned-challenger', authRequired, adminRequired, (req, res) => {
+  const { key, earned } = req.body || {};
+  if (!key) return res.status(400).json({ error: '대상 사용자가 필요합니다.' });
+  const target = db.prepare('SELECT key FROM users WHERE key = ?').get(key);
+  if (!target) return res.status(404).json({ error: '사용자를 찾을 수 없습니다.' });
+  db.prepare('UPDATE users SET earnedChallenger = ? WHERE key = ?').run(
+    earned ? 1 : 0,
+    key
+  );
+  res.json({ ok: true, earnedChallenger: !!earned });
 });
 
 // 사용자 비밀번호 재설정

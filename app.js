@@ -129,7 +129,7 @@
     diamond:     '게시글 25개 + 댓글 50개 + 좋아요 100개',
     master:      '게시글 35개 + 댓글 70개 + 좋아요 140개',
     grandmaster: '게시글 50개 + 댓글 100개 + 좋아요 200개',
-    challenger:  '상위 1~2명만 도달 가능 (이번 주 책플루언서가 되어야 유지, 아니면 그랜드마스터로 일시 강등)',
+    challenger:  '한 번 도달하면 영구 자격 유지. 매주 책플루언서가 되면 챌린저로 표시, 아니면 그랜드마스터로 일시 강등',
   };
 
   // 학생 키 (학년-반-번호-이름)만 티어 적용. 교사/관리자/게스트는 제외.
@@ -202,16 +202,35 @@
     return _influencerCacheKeys;
   };
 
-  // 챌린저 강등 규칙 — 900+ 이지만 이번 주 책플루언서가 아니면 그랜드마스터로 일시 강등
+  // 챌린저 영구 자격 (한 번이라도 900점 넘은 학생) — 서버가 매 응답마다 갱신
+  let _earnedCacheState = null;
+  let _earnedSet = new Set();
+  const getEarnedChallengerSet = () => {
+    if (_earnedCacheState !== state) {
+      _earnedCacheState = state;
+      _earnedSet = new Set(
+        Array.isArray(state.earnedChallengerKeys) ? state.earnedChallengerKeys : []
+      );
+    }
+    return _earnedSet;
+  };
+
+  // 챌린저 유지/강등 규칙:
+  //  1) 한 번이라도 점수 900을 넘으면 'earnedChallenger' 영구 부여
+  //  2) earnedChallenger 학생은 매주 책플루언서일 때만 챌린저로 표시 (현재 점수와 무관)
+  //  3) 그 외 주에는 그랜드마스터 (더 아래로는 떨어지지 않음)
+  //  4) earnedChallenger 가 없는 학생은 점수 그대로 매핑
   const grandmasterTier = TIERS.find((t) => t.key === 'grandmaster');
+  const challengerTier = TIERS.find((t) => t.key === 'challenger');
   const tierForUserKey = (uKey) => {
     if (!isStudentKey(uKey)) return null;
-    const score = computeUserScore(uKey);
-    let t = tierForScore(score);
-    if (t.key === 'challenger' && !getCurrentInfluencerKeys().has(uKey)) {
-      t = grandmasterTier || t;
+    if (getEarnedChallengerSet().has(uKey)) {
+      return getCurrentInfluencerKeys().has(uKey)
+        ? challengerTier
+        : grandmasterTier;
     }
-    return t;
+    const score = computeUserScore(uKey);
+    return tierForScore(score);
   };
 
   // 학생 이름 옆에 붙는 티어 배지 HTML
